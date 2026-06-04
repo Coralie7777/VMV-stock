@@ -1395,7 +1395,7 @@ async function validerReceptionBL(){
       }
       await atFetch(AT_BL_BASE, AT_BL_TABLE, '', {
         method:'POST',
-        body: JSON.stringify({fields})
+        body: JSON.stringify({fields, typecast: true})
       });
       countAT++;
     }catch(e){ errors++; console.error('AT BL error:', e); }
