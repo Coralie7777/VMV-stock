@@ -1962,8 +1962,8 @@ function renderDetail(num){
       <div class="lc-progress">
         <div class="lc-nums">Sorti : <strong>${l.sortie}</strong> / prévu : <strong>${l.prevue}</strong> ${h(l.unite)}</div>
         <div class="lc-btns">
-          <button class="lc-out m" onclick="sortirLigne('${a(l.recId)}',-1,'${a(l.ref)}',${l.sortie},${l.prevue})">−</button>
           <button class="lc-out p" onclick="sortirLigne('${a(l.recId)}',1,'${a(l.ref)}',${l.sortie},${l.prevue})">+</button>
+          <button class="lc-out m" onclick="sortirLigne('${a(l.recId)}',-1,'${a(l.ref)}',${l.sortie},${l.prevue})">−</button>
           <button class="lc-check ${complet?'done':'todo'}" onclick="sortirComplet('${a(l.recId)}','${a(l.ref)}',${l.sortie},${l.prevue})">${complet?'✓':'○'}</button>
         </div>
       </div>
