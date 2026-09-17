@@ -405,7 +405,7 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 <div class="view" id="view-chantiers">
   <div class="chantier-hero">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-    <div><h3>Gestion chantiers</h3><p>Stock prévu, stock sorti, avancement en temps réel. Les chantiers se créent via Airtable.</p></div>
+    <div><h3>Gestion chantiers</h3><p>Stock prévu, stock entré, avancement en temps réel. Les chantiers se créent via Airtable.</p></div>
   </div>
 
   <div class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" id="inp-search-chantier" placeholder="Nom, numéro ou responsable..." oninput="renderChantiers()" autocomplete="off"></div>
@@ -2984,7 +2984,7 @@ function closeOverlay(id,e){if(!e||e.target===document.getElementById(id))docume
 
 function dlChantierCSV(num){
   const ch=chantiers.find(c=>c.num===num);if(!ch)return;
-  const rows=[['Référence','Désignation','Unité','Qté prévue','Qté sortie','Reste','Statut','Stock dispo']];
+  const rows=[['Référence','Désignation','Unité','Qté prévue','Qté entrée','Reste','Statut','Stock dispo']];
   lignes.filter(l=>l.chNum===num).forEach(l=>{
     const s=(stockMap[l.ref]||{qty:0}).qty;const reste=Math.max(0,l.prevue-l.sortie);
     rows.push([l.ref,l.des,l.unite,l.prevue,l.sortie,reste,l.sortie>=l.prevue?'Complet':l.sortie>0?'Partiel':'En attente',s]);
