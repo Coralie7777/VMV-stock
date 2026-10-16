@@ -1,0 +1,28 @@
+name: Supabase Keepalive
+
+# Le plan gratuit Supabase met le projet en veille après une période
+# d'inactivité. On fait un appel API minimal tous les 3 jours pour que
+# ça n'arrive jamais. Pas de données modifiées, juste une lecture.
+on:
+  schedule:
+    - cron: '0 6 */3 * *'
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
+            "https://rqhixlqtqmzlghguvmoy.supabase.co/rest/v1/stock?select=id&limit=1" \
+            -H "apikey: ${SB_KEY}" \
+            -H "Authorization: Bearer ${SB_KEY}")
+          echo "HTTP status: $code"
+          if [ "$code" != "200" ]; then
+            echo "::warning::Ping Supabase a répondu $code (le projet est peut-être en veille ou a changé)"
+          fi
+        env:
+          SB_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
