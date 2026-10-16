@@ -724,7 +724,7 @@ function hideSpin(){var s=document.getElementById('spinner');if(s)s.style.displa
 var _toastT;
 function toast(msg){var el=document.getElementById('toast');if(!el)return;el.textContent=msg;el.classList.add('show');clearTimeout(_toastT);_toastT=setTimeout(function(){el.classList.remove('show');},2800);}
 function h(s){return(s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function a(s){return(s||'').toString().replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+function a(s){return(s||'').toString().replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}
 
 // -- CONFIG ------------------------------------------------------------------
 // Supabase — Stock
