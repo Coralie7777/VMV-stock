@@ -88,6 +88,7 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 .pill-rupture{background:var(--red-light);color:var(--red)}
 .card-des{font-size:13px;color:var(--text);line-height:1.4}
 .card-fam{font-size:11px;color:var(--muted);margin-top:2px}
+.card-loc{font-size:11px;color:var(--blue);font-weight:600;margin-top:3px}
 .card-stock{display:flex;align-items:center;justify-content:space-between;margin-top:7px;padding-top:7px;border-top:1px solid var(--border)}
 .stock-num{font-size:17px;font-weight:600}
 .stock-unit{font-size:12px;color:var(--muted);margin-left:3px}
@@ -551,6 +552,10 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
   <div style="margin:5px 0 12px"><span class="pill pill-col" id="sh-col"></span></div>
   <div class="sheet-row"><span>Famille</span><span id="sh-fam"></span></div>
   <div class="sheet-row"><span>Unité</span><span id="sh-uni"></span></div>
+  <div class="seuil-block">
+    <label>📍 Emplacement (ex: H3)</label>
+    <input type="text" id="sh-emplacement" placeholder="Non renseigné">
+  </div>
   <div class="qty-block">
     <label>Quantité en stock</label>
     <button class="btn-rnd m" onclick="sheetQty(-1)">−</button>
@@ -1055,6 +1060,7 @@ function renderProducts(){
     return `<div class="product-card ${cls}" onclick="openSheet('${a(p.ref)}')">
       <div class="card-top"><span class="ref">${h(p.ref)}</span><div class="pills">${colP}${stP}</div></div>
       <div class="card-des">${h(p.des)}</div><div class="card-fam">${h(p.fam)}</div>
+      ${p.emp?`<div class="card-loc">📍 ${h(p.emp)}</div>`:''}
       <div class="card-stock">
         <div><span class="stock-unit">${h(p.uni||'')}</span>${s.seuil>0?`<span class="stock-seuil">min ${s.seuil}</span>`:''}</div>
         <input type="number" inputmode="decimal" step="any" min="0" class="qty-input" value="${s.qty}"
@@ -1085,6 +1091,7 @@ function renderAlertes(){
     return `<div class="product-card ${cls}" onclick="openSheet('${a(p.ref)}')">
       <div class="card-top"><span class="ref">${h(p.ref)}</span><span class="pill ${st==='rupture'?'pill-rupture':'pill-alerte'}">${st==='rupture'?'Rupture':'⚠ Alerte'}</span></div>
       <div class="card-des">${h(p.des)}</div><div class="card-fam">${h(p.fam)}</div>
+      ${p.emp?`<div class="card-loc">📍 ${h(p.emp)}</div>`:''}
       <div class="card-stock"><span class="stock-num">${s.qty}</span><span class="stock-unit">${h(p.uni||'')} ${s.seuil>0?'/ min '+s.seuil:''}</span></div>
     </div>`;
   }).join('');
@@ -1106,16 +1113,30 @@ function openSheet(ref){
   document.getElementById('sh-uni').textContent=p.uni||'—';
   document.getElementById('sh-qty').textContent=pendingQty;
   document.getElementById('sh-seuil').value=pendingSeuil;
+  document.getElementById('sh-emplacement').value=p.emp||'';
   document.getElementById('overlay-stock').classList.add('open');
 }
 function sheetQty(d){pendingQty=Math.max(0,pendingQty+d);document.getElementById('sh-qty').textContent=pendingQty;}
 async function saveSheet(){
   if(!currentRef)return;
   pendingSeuil=parseInt(document.getElementById('sh-seuil').value)||0;
+  var emplacement=(document.getElementById('sh-emplacement').value||'').trim();
   stockMap[currentRef]={...(stockMap[currentRef]||{}),qty:pendingQty,seuil:pendingSeuil};
+  var p=products.find(function(x){return x.ref===currentRef;});
+  if(p)p.emp=emplacement;
   saveLocal();closeOverlay('overlay-stock');renderProducts();updateBadge();
-  try{await upsertStock(currentRef,pendingQty,pendingSeuil);toast('Enregistré ✓');}
-  catch(e){toast('Erreur réseau — sauvegarde locale');}
+  try{
+    await upsertStock(currentRef,pendingQty,pendingSeuil);
+    await upsertArticleEmplacement(currentRef,emplacement);
+    toast('Enregistré ✓');
+  }catch(e){toast('Erreur réseau — sauvegarde locale');}
+}
+async function upsertArticleEmplacement(ref,emplacement){
+  await sbFetch('articles?ref=eq.'+encodeURIComponent(ref), {
+    method:'PATCH',
+    headers:{'Prefer':'return=minimal'},
+    body: JSON.stringify({emplacement: emplacement||null})
+  });
 }
 
 // -- BON DE LIVRAISON ----------------------------------------------------------
@@ -2122,7 +2143,7 @@ async function createCatalogueEntry(ref, des, couleur, unite){
       headers:{'Prefer':'resolution=ignore-duplicates,return=minimal'},
       body: JSON.stringify({ref:ref, designation:des||'', couleur:couleur||null, unite:unite||''})
     });
-    products.push({id:ref, ref:ref, des:des||'', fam:'', col:couleur||'', uni:unite||'', cat:''});
+    products.push({id:ref, ref:ref, des:des||'', fam:'', col:couleur||'', uni:unite||'', cat:'', emp:''});
   }catch(e){ console.error('Erreur création catalogue', ref, e); }
 }
 
@@ -3131,14 +3152,14 @@ async function loadCatalogue(){
   try{
     var page = 0, pageSize = 1000, allRows = [];
     while(true){
-      var rows = await sbFetch('articles?select=ref,designation,famille,couleur,unite,categorie&limit='+pageSize+'&offset='+(page*pageSize));
+      var rows = await sbFetch('articles?select=ref,designation,famille,couleur,unite,categorie,emplacement&limit='+pageSize+'&offset='+(page*pageSize));
       if(!rows || !rows.length) break;
       allRows.push(...rows);
       if(rows.length < pageSize) break;
       page++;
     }
     products = allRows.map(function(r){
-      return {id:r.ref, ref:r.ref, des:r.designation, fam:r.famille, col:r.couleur, uni:r.unite, cat:r.categorie};
+      return {id:r.ref, ref:r.ref, des:r.designation, fam:r.famille, col:r.couleur, uni:r.unite, cat:r.categorie, emp:r.emplacement||''};
     });
   }catch(e){
     console.error('Erreur chargement catalogue Supabase:', e);
