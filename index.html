@@ -88,7 +88,13 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 .pill-rupture{background:var(--red-light);color:var(--red)}
 .card-des{font-size:13px;color:var(--text);line-height:1.4}
 .card-fam{font-size:11px;color:var(--muted);margin-top:2px}
+.card-loc{font-size:11px;color:var(--blue);font-weight:600;margin-top:3px}
 .card-stock{display:flex;align-items:center;justify-content:space-between;margin-top:7px;padding-top:7px;border-top:1px solid var(--border)}
+.card-stock-head{display:flex;align-items:center;margin-top:7px;padding-top:7px;border-top:1px solid var(--border)}
+.card-stock-multi{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.color-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.color-row-name{font-size:12px;color:var(--text);font-weight:500}
+.qty-input-sm{width:56px;padding:5px 4px;font-size:14px}
 .stock-num{font-size:17px;font-weight:600}
 .stock-unit{font-size:12px;color:var(--muted);margin-left:3px}
 .stock-seuil{font-size:11px;color:var(--hint);margin-left:5px}
@@ -551,13 +557,26 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
   <div style="margin:5px 0 12px"><span class="pill pill-col" id="sh-col"></span></div>
   <div class="sheet-row"><span>Famille</span><span id="sh-fam"></span></div>
   <div class="sheet-row"><span>Unité</span><span id="sh-uni"></span></div>
-  <div class="qty-block">
+  <div class="seuil-block">
+    <label>📍 Emplacement (ex: H3)</label>
+    <input type="text" id="sh-emplacement" placeholder="Non renseigné">
+  </div>
+  <div class="seuil-block">
+    <label>🎨 Couleurs disponibles (si plusieurs, séparées par virgule)</label>
+    <input type="text" id="sh-couleurs-dispo" placeholder="ex: BRUT, BLANC, NOIR">
+  </div>
+  <div class="qty-block" id="sh-qty-block">
     <label>Quantité en stock</label>
     <button class="btn-rnd m" onclick="sheetQty(-1)">−</button>
     <span class="qty-val" id="sh-qty">0</span>
     <button class="btn-rnd p" onclick="sheetQty(1)">+</button>
   </div>
-  <div class="seuil-block">
+  <div class="qty-block" id="sh-multi-block" style="display:none;flex-direction:column;align-items:stretch;gap:6px">
+    <label>Quantité par couleur</label>
+    <div id="sh-multi-list"></div>
+    <div style="font-size:11px;color:var(--muted)">Modifiable directement depuis la liste Stock.</div>
+  </div>
+  <div class="seuil-block" id="sh-seuil-block">
     <label>Seuil d'alerte (mini)</label>
     <input type="number" id="sh-seuil" min="0" value="0">
   </div>
@@ -758,7 +777,7 @@ const FLD_L = {ref:'fldGPOdvO79xicXVe',des:'fldkrr8irDEi3yF1w',chNum:'fldcAju81P
 
 // -- STATE -------------------------------------------------------------------
 let API_KEY='',USERNAME='';
-let products=[],stockMap={},filtered=[];
+let products=[],stockMap={},stockColorMap={},filtered=[];
 let chantiers=[],lignes=[];
 let currentRef=null,pendingQty=0,pendingSeuil=0;
 let currentChantier=null,editingChantierRecId=null,editingChantierType='pro';
@@ -818,17 +837,34 @@ async function loadAllStock(){
   try{
     var page = 0, pageSize = 1000, allRows = [];
     while(true){
-      var rows = await sbFetch('stock?select=ref,qty,seuil,id&limit='+pageSize+'&offset='+(page*pageSize));
+      var rows = await sbFetch('stock?select=ref,qty,seuil,id,couleur&limit='+pageSize+'&offset='+(page*pageSize));
       if(!rows || !rows.length) break;
       allRows.push(...rows);
       if(rows.length < pageSize) break;
       page++;
     }
     stockMap = {};
+    stockColorMap = {};
     allRows.forEach(function(r){
-      if(r.ref) stockMap[r.ref] = {qty: r.qty||0, seuil: r.seuil||0, recId: r.id};
+      if(!r.ref) return;
+      var col = r.couleur || '';
+      if(col){
+        // Ligne de stock spécifique à une couleur
+        if(!stockColorMap[r.ref]) stockColorMap[r.ref] = {};
+        stockColorMap[r.ref][col] = {qty: r.qty||0, seuil: r.seuil||0, recId: r.id};
+      } else {
+        stockMap[r.ref] = {qty: r.qty||0, seuil: r.seuil||0, recId: r.id};
+      }
     });
-    console.log('Stock Supabase chargé:', Object.keys(stockMap).length, 'refs');
+    // Pour les refs multi-couleur, stockMap[ref] devient le TOTAL toutes couleurs confondues
+    // (alertes/badge/export/chantiers continuent de lire stockMap[ref] sans rien changer)
+    Object.keys(stockColorMap).forEach(function(ref){
+      var colors = stockColorMap[ref];
+      var total = 0, maxSeuil = 0;
+      Object.keys(colors).forEach(function(c){ total += colors[c].qty||0; maxSeuil = Math.max(maxSeuil, colors[c].seuil||0); });
+      stockMap[ref] = {qty: total, seuil: (stockMap[ref]&&stockMap[ref].seuil) || maxSeuil, recId: (stockMap[ref]||{}).recId};
+    });
+    console.log('Stock Supabase chargé:', Object.keys(stockMap).length, 'refs,', Object.keys(stockColorMap).length, 'refs multi-couleur');
   }catch(e){
     console.error('Erreur Supabase loadAllStock:', e);
   }
@@ -882,9 +918,17 @@ async function loadLignes(){
   }catch(e){ console.error('loadLignes error:', e); lignes=[]; }
 }
 
-async function upsertStock(ref,qty,seuil){
+async function upsertStock(ref,qty,seuil,couleur){
+  couleur = couleur || '';
+  if(!couleur){
+    var prodMC = products.find(function(x){return x.ref===ref;});
+    if(prodMC && prodMC.couleursDispo){
+      toast('⚠️ '+ref+' a plusieurs couleurs — à ajuster depuis l\'onglet Stock');
+      throw new Error('ref multi-couleur sans couleur précisée');
+    }
+  }
   var statut = qty===0 ? 'Rupture' : (seuil>0&&qty<=seuil ? 'Alerte seuil' : 'En stock');
-  var entry = stockMap[ref];
+  var entry = couleur ? (stockColorMap[ref]||{})[couleur] : stockMap[ref];
   try{
     if(entry && entry.recId){
       // Mettre à jour par id
@@ -894,8 +938,8 @@ async function upsertStock(ref,qty,seuil){
         body: JSON.stringify({qty:qty, seuil:seuil, statut:statut})
       });
     } else {
-      // Chercher si la ref existe déjà dans Supabase
-      var existing = await sbFetch('stock?ref=eq.'+encodeURIComponent(ref)+'&select=id,qty');
+      // Chercher si la ref (+ couleur) existe déjà dans Supabase
+      var existing = await sbFetch('stock?ref=eq.'+encodeURIComponent(ref)+'&couleur=eq.'+encodeURIComponent(couleur)+'&select=id,qty');
       if(existing && existing.length > 0){
         // Mettre à jour l'existant
         await sbFetch('stock?id=eq.'+existing[0].id, {
@@ -903,22 +947,27 @@ async function upsertStock(ref,qty,seuil){
           headers:{'Prefer':'return=minimal'},
           body: JSON.stringify({qty:qty, seuil:seuil, statut:statut})
         });
-        if(!stockMap[ref]) stockMap[ref] = {qty,seuil};
-        stockMap[ref].recId = existing[0].id;
+        entry = {qty:qty, seuil:seuil, recId: existing[0].id};
       } else {
         // Insérer nouveau
         var result = await sbFetch('stock', {
           method:'POST',
           headers:{'Prefer':'return=representation'},
-          body: JSON.stringify({ref:ref, qty:qty, seuil:seuil, statut:statut})
+          body: JSON.stringify({ref:ref, qty:qty, seuil:seuil, statut:statut, couleur:couleur})
         });
-        if(result && result[0]){
-          if(!stockMap[ref]) stockMap[ref] = {qty,seuil};
-          stockMap[ref].recId = result[0].id;
-        }
+        entry = {qty:qty, seuil:seuil, recId: result && result[0] ? result[0].id : null};
       }
     }
-    stockMap[ref] = Object.assign(stockMap[ref]||{}, {qty, seuil});
+    entry = Object.assign(entry||{}, {qty, seuil});
+    if(couleur){
+      if(!stockColorMap[ref]) stockColorMap[ref] = {};
+      stockColorMap[ref][couleur] = entry;
+      // Recalcule le total agrégé lu par tout le reste de l'app (alertes, badge, export, chantiers...)
+      var total=0; Object.keys(stockColorMap[ref]).forEach(function(c){ total += stockColorMap[ref][c].qty||0; });
+      stockMap[ref] = Object.assign(stockMap[ref]||{}, {qty: total});
+    } else {
+      stockMap[ref] = entry;
+    }
   }catch(e){
     console.error('Erreur upsertStock Supabase:', ref, e);
     var msg = e && e.message ? e.message : (typeof e === 'string' ? e : 'Erreur inconnue');
@@ -1055,15 +1104,43 @@ function renderProducts(){
     return `<div class="product-card ${cls}" onclick="openSheet('${a(p.ref)}')">
       <div class="card-top"><span class="ref">${h(p.ref)}</span><div class="pills">${colP}${stP}</div></div>
       <div class="card-des">${h(p.des)}</div><div class="card-fam">${h(p.fam)}</div>
+      ${p.emp?`<div class="card-loc">📍 ${h(p.emp)}</div>`:''}
+      ${p.couleursDispo?`
+      <div class="card-stock-head"><span class="stock-unit">${h(p.uni||'')} · total ${s.qty}</span>${s.seuil>0?`<span class="stock-seuil">min ${s.seuil}</span>`:''}</div>
+      <div class="card-stock-multi">
+        ${p.couleursDispo.map(function(c){
+          var cs=(stockColorMap[p.ref]||{})[c]||{qty:0};
+          return `<div class="color-row">
+            <span class="color-row-name">${h(c)}</span>
+            <input type="number" inputmode="decimal" step="any" min="0" class="qty-input qty-input-sm" value="${cs.qty}"
+              onclick="event.stopPropagation()"
+              onkeydown="if(event.key==='Enter')this.blur()"
+              onchange="event.stopPropagation();setQtyColor('${a(p.ref)}','${a(c)}',this.value)">
+          </div>`;
+        }).join('')}
+      </div>`:`
       <div class="card-stock">
         <div><span class="stock-unit">${h(p.uni||'')}</span>${s.seuil>0?`<span class="stock-seuil">min ${s.seuil}</span>`:''}</div>
         <input type="number" inputmode="decimal" step="any" min="0" class="qty-input" value="${s.qty}"
           onclick="event.stopPropagation()"
           onkeydown="if(event.key==='Enter')this.blur()"
           onchange="event.stopPropagation();setQty('${a(p.ref)}',this.value)">
-      </div>
+      </div>`}
     </div>`;
   }).join('')+(filtered.length>80?`<div class="empty" style="padding:14px">…et ${filtered.length-80} autres</div>`:'');
+}
+
+async function setQtyColor(ref,couleur,val){
+  const cs=(stockColorMap[ref]||{})[couleur]||{qty:0,seuil:0};
+  let nq=parseFloat((val||'').toString().replace(',','.'));
+  if(isNaN(nq)||nq<0)nq=cs.qty;
+  nq=Math.round(nq*1000)/1000;
+  if(!stockColorMap[ref])stockColorMap[ref]={};
+  stockColorMap[ref][couleur]={...cs,qty:nq};
+  var total=0; Object.keys(stockColorMap[ref]).forEach(function(c){total+=stockColorMap[ref][c].qty||0;});
+  stockMap[ref]=Object.assign(stockMap[ref]||{},{qty:total});
+  saveLocal();renderProducts();updateBadge();
+  try{await upsertStock(ref,nq,cs.seuil,couleur);}catch(e){toast('Erreur sauvegarde');}
 }
 
 async function setQty(ref,val){
@@ -1085,6 +1162,7 @@ function renderAlertes(){
     return `<div class="product-card ${cls}" onclick="openSheet('${a(p.ref)}')">
       <div class="card-top"><span class="ref">${h(p.ref)}</span><span class="pill ${st==='rupture'?'pill-rupture':'pill-alerte'}">${st==='rupture'?'Rupture':'⚠ Alerte'}</span></div>
       <div class="card-des">${h(p.des)}</div><div class="card-fam">${h(p.fam)}</div>
+      ${p.emp?`<div class="card-loc">📍 ${h(p.emp)}</div>`:''}
       <div class="card-stock"><span class="stock-num">${s.qty}</span><span class="stock-unit">${h(p.uni||'')} ${s.seuil>0?'/ min '+s.seuil:''}</span></div>
     </div>`;
   }).join('');
@@ -1104,18 +1182,59 @@ function openSheet(ref){
   document.getElementById('sh-col').textContent=p.col||'—';
   document.getElementById('sh-fam').textContent=p.fam;
   document.getElementById('sh-uni').textContent=p.uni||'—';
-  document.getElementById('sh-qty').textContent=pendingQty;
   document.getElementById('sh-seuil').value=pendingSeuil;
+  document.getElementById('sh-emplacement').value=p.emp||'';
+  document.getElementById('sh-couleurs-dispo').value=(p.couleursDispo||[]).join(', ');
+  var isMulti = !!p.couleursDispo;
+  document.getElementById('sh-qty-block').style.display = isMulti ? 'none' : '';
+  document.getElementById('sh-multi-block').style.display = isMulti ? 'flex' : 'none';
+  document.getElementById('sh-seuil-block').style.display = isMulti ? 'none' : '';
+  if(isMulti){
+    document.getElementById('sh-multi-list').innerHTML = p.couleursDispo.map(function(c){
+      var cs=(stockColorMap[ref]||{})[c]||{qty:0};
+      return '<div class="color-row"><span class="color-row-name">'+h(c)+'</span><strong>'+cs.qty+' '+h(p.uni||'')+'</strong></div>';
+    }).join('');
+  } else {
+    document.getElementById('sh-qty').textContent=pendingQty;
+  }
   document.getElementById('overlay-stock').classList.add('open');
 }
 function sheetQty(d){pendingQty=Math.max(0,pendingQty+d);document.getElementById('sh-qty').textContent=pendingQty;}
 async function saveSheet(){
   if(!currentRef)return;
-  pendingSeuil=parseInt(document.getElementById('sh-seuil').value)||0;
-  stockMap[currentRef]={...(stockMap[currentRef]||{}),qty:pendingQty,seuil:pendingSeuil};
+  var emplacement=(document.getElementById('sh-emplacement').value||'').trim();
+  var couleursRaw=(document.getElementById('sh-couleurs-dispo').value||'').trim();
+  var couleursArr=couleursRaw?[...new Set(couleursRaw.split(',').map(function(s){return s.trim().toUpperCase();}).filter(Boolean))]:[];
+  var couleursDispo=couleursArr.length>=2?couleursArr:null;
+  var p=products.find(function(x){return x.ref===currentRef;});
+  var wasMulti = !!(p&&p.couleursDispo);
+  if(p){p.emp=emplacement;p.couleursDispo=couleursDispo;}
+  var isMulti = !!couleursDispo;
+  if(!isMulti){
+    pendingSeuil=parseInt(document.getElementById('sh-seuil').value)||0;
+    stockMap[currentRef]={...(stockMap[currentRef]||{}),qty:pendingQty,seuil:pendingSeuil};
+  }
   saveLocal();closeOverlay('overlay-stock');renderProducts();updateBadge();
-  try{await upsertStock(currentRef,pendingQty,pendingSeuil);toast('Enregistré ✓');}
-  catch(e){toast('Erreur réseau — sauvegarde locale');}
+  try{
+    if(!isMulti) await upsertStock(currentRef,pendingQty,pendingSeuil);
+    await upsertArticleEmplacement(currentRef,emplacement);
+    if(isMulti!==wasMulti || isMulti) await upsertArticleCouleursDisponibles(currentRef,couleursDispo);
+    toast('Enregistré ✓');
+  }catch(e){toast('Erreur réseau — sauvegarde locale');}
+}
+async function upsertArticleCouleursDisponibles(ref,couleursDispo){
+  await sbFetch('articles?ref=eq.'+encodeURIComponent(ref), {
+    method:'PATCH',
+    headers:{'Prefer':'return=minimal'},
+    body: JSON.stringify({couleurs_disponibles: couleursDispo})
+  });
+}
+async function upsertArticleEmplacement(ref,emplacement){
+  await sbFetch('articles?ref=eq.'+encodeURIComponent(ref), {
+    method:'PATCH',
+    headers:{'Prefer':'return=minimal'},
+    body: JSON.stringify({emplacement: emplacement||null})
+  });
 }
 
 // -- BON DE LIVRAISON ----------------------------------------------------------
@@ -2122,7 +2241,7 @@ async function createCatalogueEntry(ref, des, couleur, unite){
       headers:{'Prefer':'resolution=ignore-duplicates,return=minimal'},
       body: JSON.stringify({ref:ref, designation:des||'', couleur:couleur||null, unite:unite||''})
     });
-    products.push({id:ref, ref:ref, des:des||'', fam:'', col:couleur||'', uni:unite||'', cat:''});
+    products.push({id:ref, ref:ref, des:des||'', fam:'', col:couleur||'', uni:unite||'', cat:'', emp:''});
   }catch(e){ console.error('Erreur création catalogue', ref, e); }
 }
 
@@ -2135,9 +2254,15 @@ async function confirmFabricationSortie(){
     var it = items[i];
     try{
       if(!it.inCatalog){ await createCatalogueEntry(it.ref, it.des, it.couleur, it.unite); }
-      var s = stockMap[it.ref] || {qty:0, seuil:0};
+      var prod = products.find(function(x){return x.ref===it.ref;});
+      var matchedColor = prod && prod.couleursDispo ? (prod.couleursDispo.find(function(c){return c.toUpperCase()===(it.couleur||'').trim().toUpperCase();})||null) : null;
+      if(prod && prod.couleursDispo && !matchedColor){
+        console.error('Fiche fabrication: couleur "'+it.couleur+'" non reconnue pour '+it.ref+' (couleurs dispo: '+prod.couleursDispo.join(', ')+')');
+        ko++; continue;
+      }
+      var s = matchedColor ? ((stockColorMap[it.ref]||{})[matchedColor]||{qty:0,seuil:0}) : (stockMap[it.ref] || {qty:0, seuil:0});
       var newQty = Math.max(0, Math.round((s.qty - it.qtyToRemove)*1000)/1000);
-      await upsertStock(it.ref, newQty, s.seuil);
+      await upsertStock(it.ref, newQty, s.seuil, matchedColor);
       addHistory('sortie_fabrication', it.ref, it.qtyToRemove, fabPreviewChNum);
       ok++;
     }catch(e){ console.error('Erreur sortie fabrication', it.ref, e); ko++; }
@@ -2881,17 +3006,32 @@ async function confirmScan(operation){
     var ref = art.ref;
     var qty = art.qty;
 
+    // Résolution couleur pour les refs multi-couleur (ex: coloris lu sur le QR/code-barres)
+    var prodSc = products.find(function(x){return x.ref===ref;});
+    var matchedColorSc = prodSc && prodSc.couleursDispo ? (prodSc.couleursDispo.find(function(c){return c.toUpperCase()===(art.coloris||'').trim().toUpperCase();})||null) : null;
+    if(prodSc && prodSc.couleursDispo && !matchedColorSc){
+      console.error('Scan: couleur "'+art.coloris+'" non reconnue pour '+ref+' (couleurs dispo: '+prodSc.couleursDispo.join(', ')+')');
+      errors++; continue;
+    }
+
     // Calcul nouveau stock
-    var s = stockMap[ref] || {qty:0, seuil:0};
+    var s = matchedColorSc ? ((stockColorMap[ref]||{})[matchedColorSc]||{qty:0,seuil:0}) : (stockMap[ref] || {qty:0, seuil:0});
     var nq = operation==='reception' ? s.qty + qty : Math.max(0, s.qty - qty);
 
     // Mise à jour locale immédiate
-    stockMap[ref] = Object.assign({}, s, {qty: nq});
+    if(matchedColorSc){
+      if(!stockColorMap[ref])stockColorMap[ref]={};
+      stockColorMap[ref][matchedColorSc]=Object.assign({},s,{qty:nq});
+      var totalSc=0; Object.keys(stockColorMap[ref]).forEach(function(c){totalSc+=stockColorMap[ref][c].qty||0;});
+      stockMap[ref]=Object.assign(stockMap[ref]||{},{qty:totalSc});
+    } else {
+      stockMap[ref] = Object.assign({}, s, {qty: nq});
+    }
     saveLocal();
 
     // Mise à jour Airtable
     try {
-      await upsertStock(ref, nq, s.seuil || 0);
+      await upsertStock(ref, nq, s.seuil || 0, matchedColorSc);
       addHistory(operation, ref, qty, USERNAME);
       count++;
 
@@ -3131,14 +3271,14 @@ async function loadCatalogue(){
   try{
     var page = 0, pageSize = 1000, allRows = [];
     while(true){
-      var rows = await sbFetch('articles?select=ref,designation,famille,couleur,unite,categorie&limit='+pageSize+'&offset='+(page*pageSize));
+      var rows = await sbFetch('articles?select=ref,designation,famille,couleur,unite,categorie,emplacement,couleurs_disponibles&limit='+pageSize+'&offset='+(page*pageSize));
       if(!rows || !rows.length) break;
       allRows.push(...rows);
       if(rows.length < pageSize) break;
       page++;
     }
     products = allRows.map(function(r){
-      return {id:r.ref, ref:r.ref, des:r.designation, fam:r.famille, col:r.couleur, uni:r.unite, cat:r.categorie};
+      return {id:r.ref, ref:r.ref, des:r.designation, fam:r.famille, col:r.couleur, uni:r.unite, cat:r.categorie, emp:r.emplacement||'', couleursDispo:(r.couleurs_disponibles&&r.couleurs_disponibles.length>=2)?r.couleurs_disponibles:null};
     });
   }catch(e){
     console.error('Erreur chargement catalogue Supabase:', e);
