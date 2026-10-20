@@ -176,6 +176,11 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 .cdh-meta{font-size:12px;color:var(--muted);margin-top:3px}
 .cdh-actions{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
 .btn-sm-action{padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;background:#fff;color:var(--text);display:flex;align-items:center;gap:5px}
+.cmd-pdf-thumb{margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:8px;cursor:pointer;display:flex;align-items:center;gap:10px;background:#fafafa}
+.cmd-pdf-thumb:active{background:var(--blue-light)}
+.cmd-pdf-thumb img{display:block;width:72px;border:1px solid var(--border);border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.cmd-pdf-thumb-ph{font-size:12px;color:var(--muted)}
+.cmd-pdf-thumb-label{font-size:12px;color:var(--muted);font-weight:500}
 .btn-sm-action svg{width:14px;height:14px}
 .btn-sm-action.danger{border-color:var(--red);color:var(--red)}
 .btn-sm-action.primary{background:var(--purple);border-color:var(--purple);color:#fff}
@@ -2169,6 +2174,55 @@ function voirCommandePDF(chNum){
   };
 }
 
+var commandePdfThumbCache = {}; // url -> dataURL (évite de re-générer l'aperçu à chaque re-rendu)
+async function renderCommandePdfThumb(chNum){
+  var chId = getCommandePDFId(chNum);
+  var url = commandesMap[chId] || null;
+  var box = document.getElementById('cmd-pdf-thumb');
+  if(!url || !box) return;
+  if(commandePdfThumbCache[url]){
+    box.innerHTML = '';
+    var cachedImg = document.createElement('img');
+    cachedImg.src = commandePdfThumbCache[url];
+    box.appendChild(cachedImg);
+    var cachedLbl = document.createElement('span');
+    cachedLbl.className = 'cmd-pdf-thumb-label';
+    cachedLbl.textContent = '📄 Commande passée — toucher pour voir en grand';
+    box.appendChild(cachedLbl);
+    return;
+  }
+  try{
+    if(!window.pdfjsLib){
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    var pdf = await window.pdfjsLib.getDocument(url).promise;
+    var page = await pdf.getPage(1);
+    var baseViewport = page.getViewport({scale:1});
+    var scale = 160 / baseViewport.width;
+    var viewport = page.getViewport({scale:scale});
+    var canvas = document.createElement('canvas');
+    canvas.width = viewport.width; canvas.height = viewport.height;
+    await page.render({canvasContext: canvas.getContext('2d'), viewport: viewport}).promise;
+    // Re-vérifier que l'utilisateur n'a pas changé de chantier entretemps
+    box = document.getElementById('cmd-pdf-thumb');
+    if(!box) return;
+    var dataUrl = canvas.toDataURL('image/png');
+    commandePdfThumbCache[url] = dataUrl;
+    var img = document.createElement('img');
+    img.src = dataUrl;
+    box.innerHTML = '';
+    box.appendChild(img);
+    var lbl = document.createElement('span');
+    lbl.className = 'cmd-pdf-thumb-label';
+    lbl.textContent = '📄 Commande passée — toucher pour voir en grand';
+    box.appendChild(lbl);
+  }catch(e){
+    console.error('Erreur aperçu PDF commande:', e);
+    if(box) box.innerHTML = '<span class="cmd-pdf-thumb-ph">📄 Voir la commande (aperçu indisponible)</span>';
+  }
+}
+
 function renderDetail(num){
   const ch=chantiers.find(c=>c.num===num)||chantiers.find(c=>c.recId===num)||chantiers.find(c=>c.client===num);if(!ch)return;
   // Chercher les lignes par numéro de chantier OU par nom client
@@ -2195,7 +2249,12 @@ function renderDetail(num){
       </button>
       ${getCommandePDFBtn(ch.num)}
     </div>
+    ${commandesMap[getCommandePDFId(ch.num)]?`<div class="cmd-pdf-thumb" id="cmd-pdf-thumb" onclick="voirCommandePDF('${a(ch.num)}')">
+      <span class="cmd-pdf-thumb-ph">📄 Chargement de l'aperçu…</span>
+    </div>`:''}
     ${getFabricationBtn(ch.num)}`;
+
+  if(commandesMap[getCommandePDFId(ch.num)]) renderCommandePdfThumb(ch.num);
 
   document.getElementById('detail-count').textContent=total+' référence'+(total>1?'s':'');
 
