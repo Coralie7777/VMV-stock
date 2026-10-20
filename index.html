@@ -96,6 +96,9 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 .btn-c{width:30px;height:30px;border-radius:50%;border:1.5px solid;font-size:18px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;background:#fff;line-height:1}
 .btn-c.plus{border-color:var(--green);color:var(--green)}
 .btn-c.minus{border-color:var(--red);color:var(--red)}
+.qty-input{width:68px;padding:7px 4px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;font-weight:600;text-align:center;background:#fff;color:var(--text);-moz-appearance:textfield}
+.qty-input:focus{border-color:var(--blue);outline:none}
+.qty-input::-webkit-outer-spin-button,.qty-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .empty{text-align:center;padding:36px 16px;color:var(--hint)}
 .empty svg{width:40px;height:40px;margin:0 auto 10px;opacity:.2;display:block}
 
@@ -1048,19 +1051,21 @@ function renderProducts(){
       <div class="card-top"><span class="ref">${h(p.ref)}</span><div class="pills">${colP}${stP}</div></div>
       <div class="card-des">${h(p.des)}</div><div class="card-fam">${h(p.fam)}</div>
       <div class="card-stock">
-        <div><span class="stock-num">${s.qty}</span><span class="stock-unit">${h(p.uni||'')}</span>${s.seuil>0?`<span class="stock-seuil">min ${s.seuil}</span>`:''}</div>
-        <div class="btn-row">
-          <button class="btn-c minus" onclick="event.stopPropagation();quickQty('${a(p.ref)}',-1)">−</button>
-          <button class="btn-c plus" onclick="event.stopPropagation();quickQty('${a(p.ref)}',1)">+</button>
-        </div>
+        <div><span class="stock-unit">${h(p.uni||'')}</span>${s.seuil>0?`<span class="stock-seuil">min ${s.seuil}</span>`:''}</div>
+        <input type="number" inputmode="decimal" step="any" min="0" class="qty-input" value="${s.qty}"
+          onclick="event.stopPropagation()"
+          onkeydown="if(event.key==='Enter')this.blur()"
+          onchange="event.stopPropagation();setQty('${a(p.ref)}',this.value)">
       </div>
     </div>`;
   }).join('')+(filtered.length>80?`<div class="empty" style="padding:14px">…et ${filtered.length-80} autres</div>`:'');
 }
 
-async function quickQty(ref,delta){
+async function setQty(ref,val){
   const s=stockMap[ref]||{qty:0,seuil:0};
-  const nq=Math.max(0,s.qty+delta);
+  let nq=parseFloat((val||'').toString().replace(',','.'));
+  if(isNaN(nq)||nq<0)nq=s.qty;
+  nq=Math.round(nq*1000)/1000;
   stockMap[ref]={...s,qty:nq};saveLocal();renderProducts();updateBadge();
   try{await upsertStock(ref,nq,s.seuil);}catch(e){toast('Erreur sauvegarde');}
 }
