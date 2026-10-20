@@ -3087,6 +3087,19 @@ async function loadCatalogue(){
     products = [];
   }
 }
+// Masque les onglets BL/Scan/Export sur tablette (écran tactile) — gardés sur PC
+function applyDeviceTabs(){
+  try{
+    if(window.matchMedia && window.matchMedia('(pointer: coarse)').matches){
+      ['tab-bon','tab-scan','tab-export'].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el)el.style.display='none';
+      });
+    }
+  }catch(e){}
+}
+applyDeviceTabs();
+
 (async function bootstrap(){
   await loadCatalogue();
   loadExtraCatalogues();
