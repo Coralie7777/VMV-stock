@@ -1095,6 +1095,10 @@ async function doLogin(){
   try{
     await atFetch(AT_STOCK_BASE,AT_STOCK_TABLE,'?maxRecords=1');
     await sbFetch('stock?select=id&limit=1');
+    // Si le catalogue n'a pas pu se charger au démarrage (mot de passe pas
+    // encore connu à ce moment-là), on le recharge maintenant qu'on a un
+    // mot de passe app valide.
+    if(!products.length){ await loadCatalogue(); loadExtraCatalogues(); }
     saveLocal();await init();
   }catch(e){
     var errEl=document.getElementById('login-err');
@@ -1119,6 +1123,10 @@ function softLogout(){
 
 // -- INIT ---------------------------------------------------------------------
 async function init(){
+  // Filet de sécurité : si le catalogue n'a jamais pu se charger (ordre au
+  // démarrage, erreur réseau ponctuelle…), on le retente ici plutôt que de
+  // laisser le stock afficher 0 référence silencieusement.
+  if(!products.length){ try{await loadCatalogue();loadExtraCatalogues();}catch(e){} }
   setSpin('Chargement stock…');
   try{await loadAllStock();}catch(e){toast('Stock en mode hors-ligne');}
   setSpin('Chargement chantiers…');
@@ -3533,7 +3541,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-15';
+const APP_BUILD = '2026-10-22-16';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
@@ -3574,9 +3582,13 @@ document.addEventListener('visibilitychange', function(){ if(!document.hidden) c
 setInterval(checkAutoLogout, 5*60*1000);
 
 (async function bootstrap(){
+  // loadLocal() doit tourner AVANT loadCatalogue() : le catalogue passe par le
+  // proxy protégé par mot de passe (sbFetch), qui a besoin d'APP_PW déjà
+  // restauré depuis le localStorage, sinon la requête échoue en 401 et le
+  // catalogue reste vide silencieusement.
+  loadLocal();loadHistory();
   await loadCatalogue();
   loadExtraCatalogues();
-  loadLocal();loadHistory();
 
   // Session "rester connecté" périmée (ouverture après 18h) : ne pas reconnecter
   // automatiquement, forcer le passage par l'écran de connexion. On ne garde
