@@ -2061,12 +2061,15 @@ function getCommandePDFId(chNum){
 function getCommandePDFBtn(chNum){
   var chId = getCommandePDFId(chNum);
   var hasPdf = !!commandesMap[chId];
+  // L'atelier peut voir la commande PDF mais pas l'ajouter/la remplacer.
   if(hasPdf){
     return `<button class="btn-sm-action" style="background:#fff0f0;color:#c0392b;border-color:#c0392b" onclick="voirCommandePDF('${chNum}')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       Voir commande
     </button>
-    <button class="btn-sm-action" style="color:var(--muted);font-size:11px" onclick="uploadCommandePDF('${chNum}')">📎 Remplacer</button>`;
+    ${!isAtelier()?`<button class="btn-sm-action" style="color:var(--muted);font-size:11px" onclick="uploadCommandePDF('${chNum}')">📎 Remplacer</button>`:''}`;
+  } else if(isAtelier()){
+    return `<span class="btn-sm-action" style="color:var(--hint);cursor:default">Aucune commande PDF</span>`;
   } else {
     return `<button class="btn-sm-action" onclick="uploadCommandePDF('${chNum}')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
@@ -3392,7 +3395,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-10';
+const APP_BUILD = '2026-10-22-11';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
