@@ -3299,6 +3299,35 @@ function applyDeviceTabs(){
 }
 applyDeviceTabs();
 
+// -- MISE À JOUR AUTO ----------------------------------------------------------
+// À incrémenter à chaque modification du fichier pour que la détection fonctionne.
+const APP_BUILD = '2026-10-21-01';
+var _updateBannerShown = false;
+async function checkForUpdate(autoReloadIfIdle){
+  try{
+    var res = await fetch(location.pathname + '?_v=' + Date.now(), {cache:'no-store'});
+    var txt = await res.text();
+    var m = txt.match(/const APP_BUILD = '([^']+)'/);
+    if(m && m[1] && m[1] !== APP_BUILD){
+      if(autoReloadIfIdle){ location.reload(); }
+      else if(!_updateBannerShown){ showUpdateBanner(); }
+    }
+  }catch(e){ /* pas grave si ça échoue, on retentera plus tard */ }
+}
+function showUpdateBanner(){
+  if(document.getElementById('update-banner')) return;
+  _updateBannerShown = true;
+  var b=document.createElement('div');
+  b.id='update-banner';
+  b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99999;background:var(--blue);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px;box-shadow:0 -2px 8px rgba(0,0,0,.25)';
+  b.innerHTML='<span>🔄 Nouvelle version disponible</span><button style="background:#fff;color:var(--blue);border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer" onclick="location.reload()">Mettre à jour</button>';
+  document.body.appendChild(b);
+}
+// Quand on reprend l'app en main (sortie de veille, tablette rallumée) : mise à jour silencieuse.
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) checkForUpdate(true); });
+// Pendant une utilisation active : simple bannière, pour ne pas couper une saisie en cours.
+setInterval(function(){ checkForUpdate(false); }, 5*60*1000);
+
 (async function bootstrap(){
   await loadCatalogue();
   loadExtraCatalogues();
