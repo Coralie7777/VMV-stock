@@ -313,6 +313,7 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
     <p>Connectez-vous pour accéder au stock et aux chantiers partagés.</p>
     <div class="field"><label>Votre prénom</label><input id="inp-user" placeholder="Ex : Coco, Karim, Philippe…" autocomplete="off"></div>
     <div class="field"><label>Clé API Airtable</label><input id="inp-key" type="password" placeholder="patXXXXXXXXXXXXXX…" autocomplete="off"></div>
+    <div class="field"><label>Mot de passe de l'app</label><input id="inp-pw" type="password" placeholder="Mot de passe partagé VMV" autocomplete="off"></div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><input type="checkbox" id="chk-remember" style="width:18px;height:18px;accent-color:var(--blue);cursor:pointer" checked><label for="chk-remember" style="font-size:14px;color:var(--muted);cursor:pointer">Rester connecté</label></div>
     <button class="btn-primary" onclick="doLogin()">Se connecter</button>
     <div class="login-err" id="login-err">Clé invalide ou réseau inaccessible</div>
@@ -757,6 +758,9 @@ function a(s){return(s||'').toString().replace(/\\/g,'\\\\').replace(/'/g,"\\'")
 // Supabase — Stock
 const SB_URL   = 'https://rqhixlqtqmzlghguvmoy.supabase.co';
 const SB_KEY   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxaGl4bHF0cW16bGdoZ3V2bW95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NTM3NzEsImV4cCI6MjA5NzIyOTc3MX0.wJspxuubML1VRLI2n54ZVAPgYZ1EapgLwy-H265o2eA';
+// Toutes les requêtes passent par cette Edge Function (vérifie APP_PW avant
+// de parler à la base avec les droits service_role) — plus d'accès direct.
+const PROXY_URL = SB_URL + '/functions/v1/proxy';
 // Airtable — Stock (conservé pour compatibilité)
 const AT_STOCK_BASE  = 'appZgeb2SHgS4i3ky';
 const AT_STOCK_TABLE = 'tblHiequ2bj9O5BVC';
@@ -776,7 +780,7 @@ const FLD_U={prenom:'fld4TOw4fkvRPRLYh',role:'fldmSjUnCuxjxN8Tz',actif:'fldnG2OF
 const FLD_L = {ref:'fldGPOdvO79xicXVe',des:'fldkrr8irDEi3yF1w',chNum:'fldcAju81PIsYR67U',chClient:'fldPeRLfBFACPOJNI',prevue:'fldDF2bM6IqkPcAE1',sortie:'fld3mLrThi6OABte2',unite:'fldJAo810uNMKg4uc',statLigne:'fld3wxiv1yBzjKirG',who:'fld92tjtj06S2K3k2',date:'fldV4R2bnYfZKWxax'};
 
 // -- STATE -------------------------------------------------------------------
-let API_KEY='',USERNAME='';
+let API_KEY='',USERNAME='',APP_PW='';
 let products=[],stockMap={},stockColorMap={},filtered=[];
 let chantiers=[],lignes=[];
 let currentRef=null,pendingQty=0,pendingSeuil=0;
@@ -795,8 +799,8 @@ let addRefSelectedRef=null;
 
 // -- STORAGE -----------------------------------------------------------------
 const SK='vmv_v5';
-function saveLocal(){try{if(REMEMBER)localStorage.setItem(SK,JSON.stringify({key:API_KEY,user:USERNAME,stock:stockMap,chantiers,lignes,remember:true}));else localStorage.removeItem(SK);}catch(e){}}
-function loadLocal(){try{const d=JSON.parse(localStorage.getItem(SK)||'{}');API_KEY=d.key||'';USERNAME=d.user||'';stockMap=d.stock||{};chantiers=d.chantiers||[];lignes=d.lignes||[];REMEMBER=d.remember!==false;}catch(e){}}
+function saveLocal(){try{if(REMEMBER)localStorage.setItem(SK,JSON.stringify({key:API_KEY,user:USERNAME,pw:APP_PW,stock:stockMap,chantiers,lignes,remember:true}));else localStorage.removeItem(SK);}catch(e){}}
+function loadLocal(){try{const d=JSON.parse(localStorage.getItem(SK)||'{}');API_KEY=d.key||'';USERNAME=d.user||'';APP_PW=d.pw||'';stockMap=d.stock||{};chantiers=d.chantiers||[];lignes=d.lignes||[];REMEMBER=d.remember!==false;}catch(e){}}
 
 // -- AIRTABLE -----------------------------------------------------------------
 async function atFetch(base,table,path,opts){
@@ -812,24 +816,42 @@ async function atFetch(base,table,path,opts){
   return r.json();
 }
 
+function onAppPasswordRejected(){
+  // Mot de passe app refusé par le serveur (faux, changé, ou jamais saisi) :
+  // on force une reconnexion plutôt que de laisser l'app tourner cassée.
+  APP_PW='';
+  try{ var d=JSON.parse(localStorage.getItem(SK)||'{}'); d.pw=''; localStorage.setItem(SK, JSON.stringify(d)); }catch(e){}
+  var vl=document.getElementById('view-login');
+  if(vl && vl.classList.contains('active')) return; // encore à l'écran de connexion : doLogin() gère l'erreur
+  toast('🔒 Mot de passe app incorrect — reconnexion nécessaire');
+  setTimeout(function(){ location.reload(); }, 1500);
+}
+
 async function sbFetch(path, opts){
   opts = opts||{};
-  const r = await fetch(SB_URL+'/rest/v1/'+path, {
-    ...opts,
+  const method = opts.method || 'GET';
+  const prefer = (opts.headers && opts.headers.Prefer) || '';
+  const r = await fetch(PROXY_URL, {
+    method: 'POST',
     headers:{
       'apikey': SB_KEY,
-      'Authorization': 'Bearer '+SB_KEY,
-      'Content-Type': 'application/json',
-      'Prefer': opts.method==='POST' ? 'return=representation' : '',
-      ...(opts.headers||{})
-    }
+      'x-app-password': APP_PW,
+      'x-proxy-mode': 'rest',
+      'x-proxy-path': path,
+      'x-proxy-method': method,
+      'x-proxy-prefer': prefer,
+      'Content-Type': 'application/json'
+    },
+    body: opts.body
   });
+  if(r.status===401){ onAppPasswordRejected(); throw new Error('401 mot de passe app incorrect'); }
   if(!r.ok){
     var t=''; try{t=await r.text();}catch(e){}
     throw new Error(r.status+' '+t);
   }
-  if(r.status===204) return {};
-  return r.json();
+  var text=''; try{text=await r.text();}catch(e){}
+  if(!text) return {};
+  return JSON.parse(text);
 }
 
 async function loadAllStock(){
@@ -1017,16 +1039,21 @@ function computeStatLigne(prevue,sortie){
 async function doLogin(){
   const k=document.getElementById('inp-key').value.trim();
   const u=document.getElementById('inp-user').value.trim();
+  const pw=document.getElementById('inp-pw').value;
   if(!u){toast('Entrez votre prénom');return;}
   if(!k){toast('Entrez la clé Airtable');return;}
-  API_KEY=k;USERNAME=u;
+  if(!pw){toast('Entrez le mot de passe de l\'app');return;}
+  API_KEY=k;USERNAME=u;APP_PW=pw;
   const remEl=document.getElementById('chk-remember');REMEMBER=remEl?remEl.checked:true;
   setSpin('Connexion…');
   try{
     await atFetch(AT_STOCK_BASE,AT_STOCK_TABLE,'?maxRecords=1');
+    await sbFetch('stock?select=id&limit=1');
     saveLocal();await init();
   }catch(e){
-    document.getElementById('login-err').style.display='block';
+    var errEl=document.getElementById('login-err');
+    errEl.textContent = (e&&e.message&&e.message.indexOf('401')===0) ? 'Mot de passe de l\'app incorrect' : 'Clé invalide ou réseau inaccessible';
+    errEl.style.display='block';
     hideSpin();
   }
 }
@@ -1902,17 +1929,11 @@ async function loadCommandes(){
 
 async function saveCommandeSupabase(chId, url){
   try{
-    var resp = await fetch(SB_URL+'/rest/v1/commandes_pdf', {
+    await sbFetch('commandes_pdf', {
       method: 'POST',
-      headers: {
-        'apikey': SB_KEY,
-        'Authorization': 'Bearer '+SB_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
+      headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
       body: JSON.stringify({ch_id: chId, url: url, updated_at: new Date().toISOString()})
     });
-    if(!resp.ok){ var t=await resp.text(); throw new Error(t); }
     console.log('Commande PDF sauvegardée:', chId);
   }catch(e){ console.error('saveCommandeSupabase error:', e); }
 }
@@ -2007,16 +2028,18 @@ async function savePDFCommande(chNum, file){
   var fileName = 'commande_'+chId+'_'+Date.now()+'.pdf';
   toast('⏳ Upload en cours…');
   try{
-    var resp = await fetch(SB_URL+'/storage/v1/object/COMMANDES/'+fileName, {
+    var resp = await fetch(PROXY_URL, {
       method: 'POST',
       headers: {
         'apikey': SB_KEY,
-        'Authorization': 'Bearer '+SB_KEY,
-        'Content-Type': 'application/pdf',
-        'x-upsert': 'true'
+        'x-app-password': APP_PW,
+        'x-proxy-mode': 'storage',
+        'x-storage-path': 'COMMANDES/'+fileName,
+        'x-storage-content-type': 'application/pdf'
       },
       body: file
     });
+    if(resp.status===401){ onAppPasswordRejected(); throw new Error('401 mot de passe app incorrect'); }
     if(!resp.ok){ var err=await resp.text(); throw new Error(err); }
     var publicUrl = SB_URL+'/storage/v1/object/public/COMMANDES/'+fileName;
     // Sauvegarder dans Supabase (synchronisé sur tous les appareils)
@@ -3304,7 +3327,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-21-02';
+const APP_BUILD = '2026-10-22-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
