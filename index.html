@@ -3392,7 +3392,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-09';
+const APP_BUILD = '2026-10-22-10';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
@@ -3419,10 +3419,28 @@ document.addEventListener('visibilitychange', function(){ if(!document.hidden) c
 // Pendant une utilisation active : simple bannière, pour ne pas couper une saisie en cours.
 setInterval(function(){ checkForUpdate(false); }, 5*60*1000);
 
+// -- DÉCONNEXION AUTOMATIQUE EN FIN DE JOURNÉE (18h, heure locale de l'appareil) ----
+function checkAutoLogout(){
+  if(!API_KEY) return; // déjà déconnecté, rien à faire
+  if(new Date().getHours() >= 18){
+    toast('🔒 Déconnexion automatique — fin de journée');
+    setTimeout(doLogout, 1500);
+  }
+}
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) checkAutoLogout(); });
+setInterval(checkAutoLogout, 5*60*1000);
+
 (async function bootstrap(){
   await loadCatalogue();
   loadExtraCatalogues();
   loadLocal();loadHistory();
+
+  // Session "rester connecté" périmée (ouverture après 18h) : ne pas reconnecter
+  // automatiquement, forcer le passage par l'écran de connexion.
+  if((API_KEY||USERNAME||APP_PW) && new Date().getHours() >= 18){
+    API_KEY='';USERNAME='';APP_PW='';REMEMBER=false;
+    try{localStorage.removeItem(SK);}catch(e){}
+  }
 
   if(API_KEY&&USERNAME&&APP_PW){
     init();
