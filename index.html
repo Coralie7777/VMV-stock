@@ -2052,7 +2052,11 @@ function initDragDrop(){
 
 // ===== PDF COMMANDE =====
 function getCommandePDFId(chNum){
-  return currentChantier ? currentChantier : (chNum||'inconnu');
+  // Doit rester identique à la clé utilisée à l'enregistrement dans savePDFCommande
+  // (espaces remplacés par des underscores), sinon un PDF déjà envoyé n'est jamais
+  // retrouvé et l'écran "Ajouter commande PDF" reste affiché à tort.
+  var raw = currentChantier ? currentChantier : (chNum||'inconnu');
+  return raw.replace(/ /g,'_');
 }
 function getCommandePDFBtn(chNum){
   var chId = getCommandePDFId(chNum);
@@ -3388,7 +3392,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-08';
+const APP_BUILD = '2026-10-22-09';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
