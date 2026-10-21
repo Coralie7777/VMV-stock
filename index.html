@@ -1719,6 +1719,16 @@ function toutMarquerRecu(){
 function normChantierName(s){
   return (s||'').toLowerCase().replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
 }
+// Les deux noms ne se contiennent pas forcément en entier l'un l'autre
+// (ex: "BYZANCE GEISSLER" côté BL vs "CEM VILLA GEISSLER" côté Airtable — seul le nom
+// de famille "GEISSLER" est commun). On considère que ça correspond dès qu'un mot
+// significatif (4 lettres ou plus) est partagé.
+function chantierNameMatches(a, b){
+  if(!a || !b) return false;
+  if(a===b || a.includes(b) || b.includes(a)) return true;
+  var wordsB = b.split(' ').filter(function(w){return w.length>=4;});
+  return a.split(' ').filter(function(w){return w.length>=4;}).some(function(w){return wordsB.indexOf(w)!==-1;});
+}
 
 // Sélecteur manuel du chantier à affecter — plus fiable que le rapprochement
 // automatique par texte du PDF (qui peut se tromper selon le format du BL).
@@ -1731,7 +1741,7 @@ function populateBlChantierSelect(){
     var chNom = normChantierName(blData.chantier);
     guess = chantiers.find(function(c){
       var cNom = normChantierName(c.client);
-      return cNom === chNom || cNom.includes(chNom) || chNom.includes(cNom);
+      return chantierNameMatches(cNom, chNom);
     });
   }
   sel.innerHTML = '<option value="">— Sélectionner —</option>' + sorted.map(function(c){
@@ -1840,7 +1850,7 @@ async function validerReceptionBL(){
       var chNom = normChantierName(blData.chantier);
       ch = chantiers.find(function(c){
         var cNom = normChantierName(c.client);
-        return cNom === chNom || cNom.includes(chNom) || chNom.includes(cNom);
+        return chantierNameMatches(cNom, chNom);
       });
     }
     console.log('Chantier trouvé:', ch ? ch.num+' '+ch.client : 'AUCUN', '| sélection manuelle:', !!blData.chantierRecId, '| texte PDF:', blData.chantier);
@@ -3123,10 +3133,9 @@ async function confirmScan(operation){
 
       // Réception → ajouter au chantier si identifié
       if(operation === 'reception' && data.chantier){
-        var chNom = data.chantier;
+        var chNom = normChantierName(data.chantier);
         var ch = chantiers.find(function(c){
-          return c.client.toLowerCase().includes(chNom.toLowerCase().split('_')[0]) ||
-                 c.num === data.arcCmd;
+          return chantierNameMatches(normChantierName(c.client), chNom) || c.num === data.arcCmd;
         });
         if(ch){
           var prod2 = products.find(function(p){return p.ref===ref;});
@@ -3392,7 +3401,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-06';
+const APP_BUILD = '2026-10-22-07';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
