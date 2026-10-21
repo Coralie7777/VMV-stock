@@ -2431,6 +2431,9 @@ function renderDetail(num){
     const partiel=l.sortie>0&&l.sortie<l.prevue;
     const cls=complet?'complet':partiel?'partiel':reste>stockActuel?'manquant':'';
     const stockOk=stockActuel>=reste;
+    // Affichage plafonné aux besoins de CE chantier (pas le stock global de l'entrepôt,
+    // pour éviter la confusion quand le stock dispo dépasse ce qui est prévu ici).
+    const stockAffiche=Math.min(stockActuel,l.prevue);
     return `<div class="ligne-chantier ${cls}">
       <div class="lc-top"><span class="lc-ref">${h(l.ref)}</span>
         <span class="pill ${complet?'pill-ok':partiel?'pill-alerte':'pill-rupture'}">${complet?'✓ Complet':partiel?'Partiel':'En attente'}</span>
@@ -2444,7 +2447,7 @@ function renderDetail(num){
           <button class="lc-check ${complet?'done':'todo'}" onclick="sortirComplet('${a(l.recId)}','${a(l.ref)}',${l.sortie},${l.prevue})">${complet?'✓':'○'}</button>
         </div>
       </div>
-      <div class="stock-dispo ${stockOk?'ok':'nok'}">Stock dispo : ${stockActuel} ${h(l.unite)}${!stockOk&&reste>0?' — manque '+(reste-stockActuel):''}</div>
+      <div class="stock-dispo ${stockOk?'ok':'nok'}">Stock dispo : ${stockAffiche} ${h(l.unite)}${!stockOk&&reste>0?' — manque '+(reste-stockActuel):''}</div>
     </div>`;
   }).join('');
 }
@@ -3217,7 +3220,7 @@ function dlChantierCSV(num){
   const rows=[['Référence','Désignation','Unité','Qté prévue','Qté entrée','Reste','Statut','Stock dispo']];
   lignes.filter(l=>l.chNum===num).forEach(l=>{
     const s=(stockMap[l.ref]||{qty:0}).qty;const reste=Math.max(0,l.prevue-l.sortie);
-    rows.push([l.ref,l.des,l.unite,l.prevue,l.sortie,reste,l.sortie>=l.prevue?'Complet':l.sortie>0?'Partiel':'En attente',s]);
+    rows.push([l.ref,l.des,l.unite,l.prevue,l.sortie,reste,l.sortie>=l.prevue?'Complet':l.sortie>0?'Partiel':'En attente',Math.min(s,l.prevue)]);
   });
   const csv='\uFEFF'+rows.map(r=>r.map(c=>'"'+(c+'').replace(/"/g,'""')+'"').join(';')).join('\n');
   const dd=new Date().toISOString().slice(0,10).replace(/-/g,'');
@@ -3327,7 +3330,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-02';
+const APP_BUILD = '2026-10-22-03';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
