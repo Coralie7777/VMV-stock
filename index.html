@@ -1730,25 +1730,18 @@ function chantierNameMatches(a, b){
   return a.split(' ').filter(function(w){return w.length>=4;}).some(function(w){return wordsB.indexOf(w)!==-1;});
 }
 
-// Sélecteur manuel du chantier à affecter — plus fiable que le rapprochement
-// automatique par texte du PDF (qui peut se tromper selon le format du BL).
+// Sélecteur manuel du chantier à affecter — c'est la SEULE source utilisée pour
+// rattacher les données (lignes + reste à livrer), jamais le texte détecté dans le
+// PDF (affiché juste au-dessus à titre indicatif seulement, pas fiable d'un BL à
+// l'autre selon le format). Toujours vide par défaut : le choix doit être volontaire.
 function populateBlChantierSelect(){
   var sel = document.getElementById('bl-chantier-select');
   if(!sel || !blData) return;
   var sorted = chantiers.slice().sort(function(a,b){return (a.num||'').localeCompare(b.num||'');});
-  var guess = null;
-  if(blData.chantier){
-    var chNom = normChantierName(blData.chantier);
-    guess = chantiers.find(function(c){
-      var cNom = normChantierName(c.client);
-      return chantierNameMatches(cNom, chNom);
-    });
-  }
   sel.innerHTML = '<option value="">— Sélectionner —</option>' + sorted.map(function(c){
-    return '<option value="'+h(c.recId)+'"'+(guess&&guess.recId===c.recId?' selected':'')+'>'+h(c.num)+' — '+h(c.client)+'</option>';
+    return '<option value="'+h(c.recId)+'">'+h(c.num)+' — '+h(c.client)+'</option>';
   }).join('');
-  blData.chantierRecId = guess ? guess.recId : '';
-  saveBLLocal();
+  sel.value = blData.chantierRecId || '';
 }
 function onBlChantierSelect(recId){
   if(!blData) return;
@@ -1843,17 +1836,11 @@ async function validerReceptionBL(){
   // Priorité à la sélection manuelle (fiable) ; à défaut, rapprochement par texte
   // du PDF (peut se tromper si le format du BL change).
   {
-    var ch = null;
-    if(blData.chantierRecId){
-      ch = chantiers.find(function(c){return c.recId===blData.chantierRecId;});
-    } else if(blData.chantier){
-      var chNom = normChantierName(blData.chantier);
-      ch = chantiers.find(function(c){
-        var cNom = normChantierName(c.client);
-        return chantierNameMatches(cNom, chNom);
-      });
-    }
-    console.log('Chantier trouvé:', ch ? ch.num+' '+ch.client : 'AUCUN', '| sélection manuelle:', !!blData.chantierRecId, '| texte PDF:', blData.chantier);
+    // Uniquement la sélection manuelle — jamais de rapprochement automatique par
+    // texte du PDF, trop peu fiable d'un BL à l'autre.
+    var ch = blData.chantierRecId ? chantiers.find(function(c){return c.recId===blData.chantierRecId;}) : null;
+    if(!ch) msg += ' — ℹ️ aucun chantier rattaché';
+    console.log('Chantier trouvé:', ch ? ch.num+' '+ch.client : 'AUCUN', '| sélection manuelle recId:', blData.chantierRecId);
     if(ch){
       // Ajouter chaque article reçu comme ligne dans le chantier
       for(var j=0; j<blData.articles.length; j++){
@@ -3401,7 +3388,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-07';
+const APP_BUILD = '2026-10-22-08';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
