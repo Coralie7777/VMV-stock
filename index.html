@@ -1184,7 +1184,10 @@ function openSheet(ref){
   document.getElementById('sh-uni').textContent=p.uni||'—';
   document.getElementById('sh-seuil').value=pendingSeuil;
   document.getElementById('sh-emplacement').value=p.emp||'';
-  document.getElementById('sh-couleurs-dispo').value=(p.couleursDispo||[]).join(', ');
+  // Pré-remplit avec la couleur simple existante (éclatée sur / , ;) si pas encore en mode multi,
+  // pour pouvoir juste compléter au lieu de devoir tout retaper depuis zéro.
+  var couleursPrefill = p.couleursDispo || (p.col ? p.col.split(/[\/,;]/).map(function(s){return s.trim();}).filter(Boolean) : []);
+  document.getElementById('sh-couleurs-dispo').value = couleursPrefill.join(', ');
   var isMulti = !!p.couleursDispo;
   document.getElementById('sh-qty-block').style.display = isMulti ? 'none' : '';
   document.getElementById('sh-multi-block').style.display = isMulti ? 'flex' : 'none';
@@ -1219,7 +1222,7 @@ async function saveSheet(){
     if(!isMulti) await upsertStock(currentRef,pendingQty,pendingSeuil);
     await upsertArticleEmplacement(currentRef,emplacement);
     if(isMulti!==wasMulti || isMulti) await upsertArticleCouleursDisponibles(currentRef,couleursDispo);
-    toast('Enregistré ✓');
+    toast(couleursArr.length===1 ? '⚠️ Enregistré — il faut au moins 2 couleurs pour activer le détail par couleur' : 'Enregistré ✓');
   }catch(e){toast('Erreur réseau — sauvegarde locale');}
 }
 async function upsertArticleCouleursDisponibles(ref,couleursDispo){
