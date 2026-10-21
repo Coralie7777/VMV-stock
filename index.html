@@ -646,6 +646,37 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 </div>
 </div>
 
+<!-- OVERLAY AJOUTER RESTE À LIVRER -->
+<div class="overlay" id="overlay-addral" onclick="closeOverlay('overlay-addral',event)">
+<div class="sheet">
+  <h2>Ajouter reste à livrer</h2>
+  <div class="ref-search-wrap" style="margin-bottom:8px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input type="text" id="inp-addral" placeholder="Référence ou désignation…" oninput="addRalSearch()" autocomplete="off" autocorrect="off" spellcheck="false">
+  </div>
+  <div class="autocomplete open" id="addral-ac" style="max-height:180px"></div>
+  <div class="selected-article visible" id="addral-selected" style="margin-top:8px">
+    <div class="qty-add-row">
+      <label>Quantité manquante</label>
+      <input type="number" id="addral-qty" value="1" min="1">
+    </div>
+    <div class="qty-add-row">
+      <label>Date de livraison prévue (optionnel)</label>
+      <input type="text" id="addral-date" placeholder="ex: 29.10.2026">
+    </div>
+    <div class="qty-add-row">
+      <label>N° BL (optionnel)</label>
+      <input type="text" id="addral-bl" placeholder="ex: 2045673122">
+    </div>
+    <button class="btn-add-line" onclick="saveAddRal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Ajouter
+    </button>
+  </div>
+  <button class="btn-cancel" style="margin-top:10px" onclick="closeOverlay('overlay-addral')">Fermer</button>
+</div>
+</div>
+
 <input type="file" id="bl-chantier-input" accept=".html,.htm" style="display:none" onchange="importBLChantier(this)">
 <div id="scanner-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:300;flex-direction:column;align-items:center;justify-content:center">
   <p style="color:#fff;font-size:14px;margin-bottom:16px">Pointez la caméra vers le code-barres</p>
@@ -1073,6 +1104,18 @@ async function doLogin(){
   }
 }
 function doLogout(){REMEMBER=false;localStorage.removeItem(SK);location.reload();}
+function softLogout(){
+  // Déconnexion "douce" (fin de journée 18h) : n'efface que le mot de passe
+  // app, garde le prénom et la clé API Airtable enregistrés pour ne pas
+  // avoir à tout ressaisir à la prochaine connexion.
+  APP_PW='';
+  try{
+    var d=JSON.parse(localStorage.getItem(SK)||'{}');
+    d.pw=''; d.key=API_KEY; d.user=USERNAME; d.remember=true;
+    localStorage.setItem(SK, JSON.stringify(d));
+  }catch(e){}
+  location.reload();
+}
 
 // -- INIT ---------------------------------------------------------------------
 async function init(){
@@ -2497,6 +2540,10 @@ function renderDetail(num){
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
         Export CSV
       </button>
+      <button class="btn-sm-action" onclick="openAddRal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Reste à livrer
+      </button>
       ${getCommandePDFBtn(ch.num)}
     </div>
     ${commandesMap[getCommandePDFId(ch.num)]?`<div class="cmd-pdf-thumb" id="cmd-pdf-thumb" onclick="voirCommandePDF('${a(ch.num)}')">
@@ -2661,6 +2708,53 @@ async function saveAddRef(){
     saveLocal();renderDetail(currentChantier);renderChantiers();
     toast('Référence ajoutée ✓');
   }catch(e){toast('Erreur réseau');}
+}
+
+// -- AJOUT MANUEL RESTE À LIVRER -------------------------------------------------
+let addRalSelectedRef=null;
+function openAddRal(){
+  if(!currentChantier){toast('Aucun chantier sélectionné');return;}
+  addRalSelectedRef=null;
+  document.getElementById('inp-addral').value='';
+  document.getElementById('addral-ac').innerHTML='';
+  document.getElementById('addral-qty').value=1;
+  document.getElementById('addral-date').value='';
+  document.getElementById('addral-bl').value='';
+  document.getElementById('overlay-addral').classList.add('open');
+  setTimeout(()=>document.getElementById('inp-addral').focus(),200);
+}
+function addRalSearch(){
+  const q=document.getElementById('inp-addral').value.trim().toUpperCase();
+  const ac=document.getElementById('addral-ac');
+  addRalSelectedRef=null;
+  if(q.length<2){ac.innerHTML='';return;}
+  const matches=products.filter(p=>p.ref.toUpperCase().startsWith(q)||p.ref.toUpperCase().includes(q)||p.des.toUpperCase().includes(q)).slice(0,6);
+  ac.innerHTML=matches.map(p=>`<div class="ac-item" onclick="selectAddRal('${a(p.ref)}')">
+    <span class="ac-ref">${h(p.ref)}</span><span class="ac-des">${h(p.des)}</span>
+  </div>`).join('');
+}
+function selectAddRal(ref){
+  addRalSelectedRef=ref;
+  document.getElementById('inp-addral').value=ref;
+  document.getElementById('addral-ac').innerHTML='';
+}
+async function saveAddRal(){
+  if(!currentChantier)return;
+  const ref=(addRalSelectedRef||document.getElementById('inp-addral').value.trim()).toUpperCase();
+  if(!ref){toast('Référence manquante');return;}
+  const qty=parseInt(document.getElementById('addral-qty').value)||1;
+  const date_livr=document.getElementById('addral-date').value.trim();
+  const bl_num=document.getElementById('addral-bl').value.trim();
+  const ch=chantiers.find(c=>c.num===currentChantier);if(!ch)return;
+  const p=products.find(x=>x.ref===ref);
+  closeOverlay('overlay-addral');
+  const row={ch_num:ch.num, ch_client:ch.client, ref:ref, designation:p?p.des:'', qty:String(qty), unite:p?(p.uni||''):'', date_livr:date_livr, bl_num:bl_num};
+  try{
+    const created=await sbFetch('reste_a_livrer', {method:'POST', headers:{'Prefer':'return=representation'}, body:JSON.stringify(row)});
+    if(created && created[0]) resteALivrer.push(created[0]);
+    renderDetail(currentChantier);renderChantiers();
+    toast('✅ Ajouté au reste à livrer');
+  }catch(e){ toast('Erreur réseau'); }
 }
 
 // -- EXPORT --------------------------------------------------------------------
@@ -3439,7 +3533,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-14';
+const APP_BUILD = '2026-10-22-15';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
@@ -3473,7 +3567,7 @@ function checkAutoLogout(){
   if(hNow >= 18){
     console.log('checkAutoLogout: déclenché, heure détectée par l\'appareil =', hNow+'h');
     toast('🔒 Déconnexion automatique — fin de journée ('+hNow+'h détecté sur cet appareil)');
-    setTimeout(doLogout, 1500);
+    setTimeout(softLogout, 1500);
   }
 }
 document.addEventListener('visibilitychange', function(){ if(!document.hidden) checkAutoLogout(); });
@@ -3485,10 +3579,15 @@ setInterval(checkAutoLogout, 5*60*1000);
   loadLocal();loadHistory();
 
   // Session "rester connecté" périmée (ouverture après 18h) : ne pas reconnecter
-  // automatiquement, forcer le passage par l'écran de connexion.
-  if((API_KEY||USERNAME||APP_PW) && new Date().getHours() >= 18){
-    API_KEY='';USERNAME='';APP_PW='';REMEMBER=false;
-    try{localStorage.removeItem(SK);}catch(e){}
+  // automatiquement, forcer le passage par l'écran de connexion. On ne garde
+  // que le mot de passe app à ressaisir — prénom et clé API Airtable restent
+  // enregistrés pour ne pas tout retaper.
+  if(APP_PW && new Date().getHours() >= 18){
+    APP_PW='';
+    try{
+      var d=JSON.parse(localStorage.getItem(SK)||'{}');
+      d.pw=''; localStorage.setItem(SK, JSON.stringify(d));
+    }catch(e){}
   }
 
   if(API_KEY&&USERNAME&&APP_PW){
