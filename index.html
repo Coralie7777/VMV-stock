@@ -1081,6 +1081,7 @@ async function init(){
   document.getElementById('tab-stock').classList.add('active');
   document.getElementById('user-name-lbl').textContent=USERNAME;
   document.getElementById('logout-btn').style.display='flex';
+  applyDeviceTabs(); // ré-applique maintenant que USERNAME (et isAtelier()) est connu
   const _n=new Date();document.getElementById('hdr-sub').textContent=USERNAME+' · sync '+_n.getHours().toString().padStart(2,'0')+':'+_n.getMinutes().toString().padStart(2,'0');
   initFilters();filtered=[...products];
   renderProducts();updateBadge();renderChantiers();
@@ -3374,7 +3375,12 @@ async function loadCatalogue(){
 // Masque les onglets BL/Scan/Export sur tablette (écran tactile) — gardés sur PC
 function applyDeviceTabs(){
   try{
-    if(window.matchMedia && window.matchMedia('(pointer: coarse)').matches){
+    // "pointer: coarse" seul n'est pas fiable sur un appareil hybride (tablette avec
+    // trackpad/souris associée, ex: tablette Windows) — le navigateur y annonce parfois
+    // un pointeur "fin" malgré l'écran tactile. On masque aussi si le compte connecté
+    // est "atelier", critère indépendant du matériel et donc plus prévisible.
+    var isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if(isTouch || isAtelier()){
       ['tab-bon','tab-scan','tab-export'].forEach(function(id){
         var el=document.getElementById(id);
         if(el)el.style.display='none';
@@ -3386,7 +3392,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-05';
+const APP_BUILD = '2026-10-22-06';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
