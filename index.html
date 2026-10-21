@@ -3327,7 +3327,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-01';
+const APP_BUILD = '2026-10-22-02';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
@@ -3359,7 +3359,7 @@ setInterval(function(){ checkForUpdate(false); }, 5*60*1000);
   loadExtraCatalogues();
   loadLocal();loadHistory();
 
-  if(API_KEY&&USERNAME){
+  if(API_KEY&&USERNAME&&APP_PW){
     init();
   }else{
     hideSpin();
@@ -3367,6 +3367,10 @@ setInterval(function(){ checkForUpdate(false); }, 5*60*1000);
     if(app){app.style.display='flex';app.style.flexDirection='column';}
     var vl=document.getElementById('view-login');
     if(vl)vl.classList.add('active');
+    // Déjà connecté auparavant (prénom/clé déjà enregistrés) : pré-remplir pour qu'il
+    // n'y ait plus que le nouveau mot de passe app à saisir.
+    if(USERNAME){var iu=document.getElementById('inp-user');if(iu)iu.value=USERNAME;}
+    if(API_KEY){var ik=document.getElementById('inp-key');if(ik)ik.value=API_KEY;}
   }
 })();
 </script>
