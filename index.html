@@ -846,7 +846,7 @@ function onAppPasswordRejected(){
   setTimeout(function(){ location.reload(); }, 1500);
 }
 
-async function sbFetch(path, opts){
+async function sbFetch(path, opts, _retried){
   opts = opts||{};
   const method = opts.method || 'GET';
   const prefer = (opts.headers && opts.headers.Prefer) || '';
@@ -863,7 +863,16 @@ async function sbFetch(path, opts){
     },
     body: opts.body
   });
-  if(r.status===401){ onAppPasswordRejected(); throw new Error('401 mot de passe app incorrect'); }
+  if(r.status===401){
+    // Avant de forcer une reconnexion complète, on réessaie une fois après un
+    // court délai : un 401 isolé peut venir d'un aléa réseau/cold-start de
+    // l'Edge Function plutôt que d'un vrai mot de passe invalide.
+    if(!_retried){
+      await new Promise(function(res){ setTimeout(res, 800); });
+      return sbFetch(path, opts, true);
+    }
+    onAppPasswordRejected(); throw new Error('401 mot de passe app incorrect');
+  }
   if(!r.ok){
     var t=''; try{t=await r.text();}catch(e){}
     throw new Error(r.status+' '+t);
@@ -2001,12 +2010,14 @@ function renderChantiers(){
     const complets=chLignes.filter(l=>l.sortie>=l.prevue&&l.prevue>0).length;
     const pct=total>0?Math.round(complets/total*100):0;
     const manquants=chLignes.filter(l=>l.prevue>0&&(stockMap[l.ref]||{qty:0}).qty<(l.prevue-l.sortie)).length;
+    const ralCount=resteALivrer.filter(r=>r.ch_num===ch.num).length;
     const statCls=ch.statut==='En préparation'?'sp-prep':ch.statut==='En cours'?'sp-cours':ch.statut==='Terminé'?'sp-done':'sp-annule';
     return `<div class="chantier-card" onclick="openDetail('${a(ch.num||ch.recId)}')">
       <div class="ch-header">
         <div><div class="ch-num">${h(ch.num)}</div><div class="ch-client">${h(ch.client)}</div>${ch.resp?`<div class="ch-resp">${h(ch.resp)}</div>`:''}</div>
         <span class="status-pill ${statCls}">${h(ch.statut)}</span>
       </div>
+      ${ralCount>0?`<div style="margin-top:6px;background:var(--amber-light);color:var(--amber);border:1px solid var(--amber);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px">⏳ ${ralCount} référence${ralCount>1?'s':''} en reste à livrer</div>`:''}
       ${total>0?`<div class="ch-progress">
         <div class="ch-stats"><span><strong>${complets}</strong>/${total} refs prêtes</span>${manquants>0?`<span style="color:var(--red)"><strong>${manquants}</strong> manquant${manquants>1?'s':''}</span>`:'<span style="color:var(--green)">Stock OK</span>'}</span></div>
         <div class="progress-bar"><div class="progress-fill ${pct<100?'partial':''}" style="width:${pct}%"></div></div>
@@ -3462,7 +3473,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-12';
+const APP_BUILD = '2026-10-22-13';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
@@ -3492,8 +3503,10 @@ setInterval(function(){ checkForUpdate(false); }, 5*60*1000);
 // -- DÉCONNEXION AUTOMATIQUE EN FIN DE JOURNÉE (18h, heure locale de l'appareil) ----
 function checkAutoLogout(){
   if(!API_KEY) return; // déjà déconnecté, rien à faire
-  if(new Date().getHours() >= 18){
-    toast('🔒 Déconnexion automatique — fin de journée');
+  var hNow = new Date().getHours();
+  if(hNow >= 18){
+    console.log('checkAutoLogout: déclenché, heure détectée par l\'appareil =', hNow+'h');
+    toast('🔒 Déconnexion automatique — fin de journée ('+hNow+'h détecté sur cet appareil)');
     setTimeout(doLogout, 1500);
   }
 }
