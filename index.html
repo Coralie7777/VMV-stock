@@ -288,6 +288,10 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
     Chantiers
   </button>
+  <button id="tab-ral" onclick="showTab('ral')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    RAL<span class="nbadge" id="ral-n">0</span>
+  </button>
   <button id="tab-scan" onclick="showTab('scan')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9V5a2 2 0 0 1 2-2h4M15 3h4a2 2 0 0 1 2 2v4M21 15v4a2 2 0 0 1-2 2h-4M9 21H5a2 2 0 0 1-2-2v-4"/><line x1="8" y1="12" x2="8" y2="12.01"/><line x1="12" y1="12" x2="12" y2="12.01"/><line x1="16" y1="12" x2="16" y2="12.01"/></svg>
     Scan
@@ -451,6 +455,15 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 <!-- ALERTES -->
 <div class="view" id="view-alertes">
   <div class="product-list" id="alist"></div>
+</div>
+
+<!-- RESTE À LIVRER -->
+<div class="view" id="view-ral">
+  <div class="chantier-hero">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <div><h3>Reste à livrer</h3><p>Lignes manquantes signalées sur les BL, toutes chantiers confondus.</p></div>
+  </div>
+  <div id="ral-list" class="product-list"></div>
 </div>
 
 <!-- EXPORT -->
@@ -788,7 +801,7 @@ const FLD_L = {ref:'fldGPOdvO79xicXVe',des:'fldkrr8irDEi3yF1w',chNum:'fldcAju81P
 // -- STATE -------------------------------------------------------------------
 let API_KEY='',USERNAME='',APP_PW='';
 let products=[],stockMap={},stockColorMap={},filtered=[];
-let chantiers=[],lignes=[];
+let chantiers=[],lignes=[],resteALivrer=[];
 let currentRef=null,pendingQty=0,pendingSeuil=0;
 let currentChantier=null,editingChantierRecId=null,editingChantierType='pro';
 let commandesMap={};  // ch_id -> url
@@ -1073,6 +1086,7 @@ async function init(){
   try{await loadChantiers();}catch(e){toast('Chantiers en mode hors-ligne');}
   try{await loadLignes();}catch(e){console.error('Lignes hors-ligne');}
   try{await loadCommandes();}catch(e){console.error('Commandes hors-ligne');}
+  try{await loadResteALivrer();}catch(e){console.error('Reste à livrer hors-ligne');}
   saveLocal();hideSpin();
   const app=document.getElementById('app');
   app.style.display='flex';app.style.flexDirection='column';
@@ -1095,11 +1109,12 @@ async function init(){
 async function syncAll(){
   const btn=document.getElementById('sync-btn');btn.classList.add('syncing');
   try{
-    await loadAllStock();await loadChantiers();
+    await loadAllStock();await loadChantiers();await loadResteALivrer();
     saveLocal();toast('Synchronisé ✓');
     renderProducts();updateBadge();renderChantiers();
     if(currentChantier)renderDetail(currentChantier);
     if(document.getElementById('view-export').classList.contains('active'))updateStats();
+    if(document.getElementById('view-ral')&&document.getElementById('view-ral').classList.contains('active'))renderResteALivrer();
   }catch(e){toast('Erreur réseau');}
   btn.classList.remove('syncing');
 }
@@ -1205,6 +1220,36 @@ function renderAlertes(){
 function updateBadge(){
   const n=products.filter(p=>{const s=stockMap[p.ref]||{qty:0,seuil:0};return s.qty===0||(s.seuil>0&&s.qty<=s.seuil);}).length;
   document.getElementById('alert-n').textContent=n;
+  const ralEl=document.getElementById('ral-n');
+  if(ralEl)ralEl.textContent=resteALivrer.length;
+}
+
+// -- RESTE À LIVRER -------------------------------------------------------------
+function renderResteALivrer(){
+  const c=document.getElementById('ral-list');
+  if(!c)return;
+  if(!resteALivrer.length){c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Rien en attente !</div>';return;}
+  c.innerHTML='<div class="count-line">'+resteALivrer.length+' ligne'+(resteALivrer.length>1?'s':'')+'</div>'+resteALivrer.map(function(r){
+    return `<div class="product-card alerte">
+      <div class="card-top"><span class="ref">${h(r.ref)}</span><span class="pill pill-alerte">⏳ ${h(r.date_livr||'date inconnue')}</span></div>
+      <div class="card-des">${h(r.designation)}</div>
+      <div class="card-fam">${h(r.ch_num)} — ${h(r.ch_client)}</div>
+      <div class="card-stock">
+        <span class="stock-num">${h(r.qty)}</span><span class="stock-unit">${h(r.unite)} · BL ${h(r.bl_num)}</span>
+        <button class="btn-c plus" style="margin-left:auto" onclick="event.stopPropagation();resolveResteALivrer(${r.id})" title="Marquer reçu">✓</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function resolveResteALivrer(id){
+  try{
+    await sbFetch('reste_a_livrer?id=eq.'+id, {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+    resteALivrer = resteALivrer.filter(function(r){return r.id!==id;});
+    renderResteALivrer();updateBadge();
+    if(currentChantier) renderDetail(currentChantier);
+    toast('✅ Marqué comme reçu');
+  }catch(e){ toast('Erreur réseau'); }
 }
 
 // -- STOCK SHEET ---------------------------------------------------------------
@@ -1860,16 +1905,24 @@ async function validerReceptionBL(){
           }catch(e){ console.error('Ligne chantier error:', art.ref, e); }
         }
       }
-      // Notes reste à livrer — complète les notes existantes (ex: remise Technal)
-      // au lieu de les écraser. Remplace seulement une éventuelle ancienne ligne
-      // "Reste à livrer" (pour ne pas s'accumuler si ce même BL est traité 2 fois).
+      // Reste à livrer — enregistré dans la table Supabase dédiée (onglet RAL),
+      // plus de bricolage dans les notes du chantier.
       if(blData.reste_a_livrer.length > 0){
-        var ralNote = 'Reste à livrer (BL '+blData.num_bl+') : '+blData.reste_a_livrer.map(function(r){
-          return r.ref+' x'+r.qty+' ('+r.date_livr+')';
-        }).join(', ');
-        var autresNotes = (ch.notes||'').split('\n').filter(function(l){return l && l.indexOf('Reste à livrer (BL')!==0;});
-        var notesMaj = autresNotes.concat([ralNote]).join('\n');
-        try{ await updateChantierRecord(ch.recId, ch.statut, notesMaj); ch.notes = notesMaj; }catch(e){}
+        for(var k=0; k<blData.reste_a_livrer.length; k++){
+          var r = blData.reste_a_livrer[k];
+          var prodR = products.find(function(p){return p.ref===r.ref;});
+          var row = {
+            ch_num: ch.num, ch_client: ch.client, ref: r.ref,
+            designation: prodR ? prodR.des : (r.designation||''),
+            qty: String(r.qty||''), unite: prodR ? (prodR.uni||'') : '',
+            date_livr: r.date_livr||'', bl_num: blData.num_bl||''
+          };
+          try{
+            var created = await sbFetch('reste_a_livrer', {method:'POST', headers:{'Prefer':'return=representation'}, body:JSON.stringify(row)});
+            if(created && created[0]) resteALivrer.push(created[0]);
+          }catch(e){ console.error('reste_a_livrer insert error:', r.ref, e); }
+        }
+        updateBadge();
       }
     }
   }
@@ -1979,6 +2032,13 @@ async function loadCommandes(){
     (rows||[]).forEach(function(r){ commandesMap[r.ch_id] = r.url; });
     console.log('Commandes PDF chargées:', Object.keys(commandesMap).length);
   }catch(e){ console.error('loadCommandes error:', e); }
+}
+
+async function loadResteALivrer(){
+  try{
+    resteALivrer = await sbFetch('reste_a_livrer?select=*&order=date_livr.asc') || [];
+    console.log('Reste à livrer chargé:', resteALivrer.length);
+  }catch(e){ console.error('loadResteALivrer error:', e); resteALivrer=[]; }
 }
 
 async function saveCommandeSupabase(chId, url){
@@ -2470,12 +2530,18 @@ function renderDetail(num){
 
   document.getElementById('detail-count').textContent=total+' référence'+(total>1?'s':'');
 
-  // Section "Reste à livrer" depuis les notes du chantier
+  // Section "Reste à livrer" — depuis la table Supabase dédiée (onglet RAL)
   var ralHtml = '';
-  if(ch.notes && ch.notes.includes('Reste à livrer')){
+  var ralCh = resteALivrer.filter(function(r){return r.ch_num===ch.num;});
+  if(ralCh.length > 0){
     ralHtml = '<div style="background:var(--amber-light);border:1px solid var(--amber);border-radius:10px;padding:12px;margin-bottom:8px">'
       +'<div style="font-weight:700;color:var(--amber);font-size:13px;margin-bottom:6px">⏳ Reste à livrer</div>'
-      +'<div style="font-size:12px;color:var(--text);white-space:pre-line">'+h(ch.notes)+'</div>'
+      +ralCh.map(function(r){
+        return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);padding:4px 0">'
+          +'<span style="flex:1">'+h(r.ref)+' x'+h(r.qty)+' '+h(r.unite)+' — '+h(r.designation)+' ('+h(r.date_livr||'date inconnue')+', BL '+h(r.bl_num)+')</span>'
+          +'<button class="btn-c plus" onclick="event.stopPropagation();resolveResteALivrer('+r.id+')" title="Marquer reçu">✓</button>'
+          +'</div>';
+      }).join('')
       +'</div>';
   }
   document.getElementById('detail-lines').insertAdjacentHTML('beforebegin', ralHtml);
@@ -3258,6 +3324,7 @@ function showTab(tab){
   if(tab==='alertes')renderAlertes();
   if(tab==='export')updateStats();
   if(tab==='chantiers')renderChantiers();
+  if(tab==='ral')renderResteALivrer();
   if(tab==='bon'){
     // Restaurer le BL en cours si on en a un sauvegardé
     if(!blData && loadBLLocal() && blData){
@@ -3395,7 +3462,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-11';
+const APP_BUILD = '2026-10-22-12';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
