@@ -383,6 +383,12 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
       <div style="font-size:13px;opacity:.9;margin-top:4px" id="bl-chantier-display">—</div>
       <div style="font-size:11px;opacity:.7;margin-top:2px" id="bl-date-display">—</div>
     </div>
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px">
+      <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:6px">Chantier à affecter</label>
+      <select id="bl-chantier-select" onchange="onBlChantierSelect(this.value)" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff;color:var(--text)">
+        <option value="">— Sélectionner —</option>
+      </select>
+    </div>
     <button onclick="openScanner('bl-reception')" style="width:100%;padding:14px;border:none;border-radius:10px;background:var(--teal);color:#fff;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M3 9V5a2 2 0 0 1 2-2h4M15 3h4a2 2 0 0 1 2 2v4M21 15v4a2 2 0 0 1-2 2h-4M9 21H5a2 2 0 0 1-2-2v-4"/></svg>
       Scanner un colis
@@ -1362,23 +1368,18 @@ function parseBLText(text){
   var m = text.match(/Bon de Livraison\s+(\d{8,12})/);
   if(m) result.num_bl = m[1];
   
-  // Chantier — méthode 1 : "Code chantier: XXXXX NOM"
-  m = text.match(/Code chantier:\s*\d+\s+([A-Za-z][^\n\r]+)/);
-  if(m) result.chantier = m[1].trim();
-
-  // Chantier — méthode 2 : nom juste après les données article, avant "Traitement"
-  // Format pdf.js : "... 2 PI 3,73 KG KAYSER Traitement"
-  if(!result.chantier){
-    m = text.match(/\d+[,\.]\d+\s+KG\s+([A-Z][A-Z0-9 _\-]{2,30})\s+Traitement/);
-    if(m){
-      var candidate = m[1].trim();
-      if(!/^(FR00|HBS|VMV|SAV|EXW|BP|No|MF|AC|XB|XBLACK)/i.test(candidate)){
-        result.chantier = candidate;
-      }
+  // Chantier — méthode 1 (prioritaire) : nom juste après les données article, avant
+  // "Traitement". Format pdf.js : "... 2 PI 3,73 KG KAYSER Traitement" — c'est le repère
+  // le plus fiable, propre à chaque ligne de commande (ex: KAYSER, BYZANCE_GEISSLER).
+  m = text.match(/\d+[,\.]\d+\s+KG\s+([A-Z][A-Z0-9 _\-]{2,30})\s+Traitement/);
+  if(m){
+    var candidate = m[1].trim();
+    if(!/^(FR00|HBS|VMV|SAV|EXW|BP|No|MF|AC|XB|XBLACK)/i.test(candidate)){
+      result.chantier = candidate;
     }
   }
 
-  // Chantier — méthode 3 : mot en majuscules entre un arc et "Traitement"
+  // Chantier — méthode 2 : mot en majuscules entre un arc et "Traitement"
   if(!result.chantier){
     var arcPattern = /(\d{10})\s*\/\s*10\b[^]*?([A-Z]{3,30})\s+Traitement/;
     m = text.match(arcPattern);
@@ -1388,6 +1389,15 @@ function parseBLText(text){
         result.chantier = cand;
       }
     }
+  }
+
+  // Chantier — méthode 3 (dernier recours) : "Code chantier: XXXXX NOM". Ce champ s'est
+  // avéré contenir parfois un texte générique sans rapport avec le vrai chantier
+  // (ex: "RC BYEANCE LOG France" au lieu du nom du client) — à n'utiliser que si les
+  // méthodes ci-dessus, plus fiables, n'ont rien trouvé.
+  if(!result.chantier){
+    m = text.match(/Code chantier:\s*\d+\s+([A-Za-z][^\n\r]+)/);
+    if(m) result.chantier = m[1].trim();
   }
   
   // Date
@@ -1541,7 +1551,8 @@ function startBLReception(){
   document.getElementById('bl-num-display').textContent = 'BL n° ' + blData.num_bl;
   document.getElementById('bl-chantier-display').textContent = blData.chantier || '—';
   document.getElementById('bl-date-display').textContent = blData.date ? 'Date : '+blData.date : '';
-  
+  populateBlChantierSelect();
+
   renderBLArticles();
   updateBLProgress();
   
@@ -1701,6 +1712,39 @@ function toutMarquerRecu(){
   document.body.appendChild(ov);
 }
 
+// Normalise pour comparer deux noms de chantier malgré les variations de forme
+// (ex: "BYZANCE_GEISSLER" vs "BYZANCE GEISSLER") : minuscules, _ et - remplacés
+// par un espace, espaces multiples réduits.
+function normChantierName(s){
+  return (s||'').toLowerCase().replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
+}
+
+// Sélecteur manuel du chantier à affecter — plus fiable que le rapprochement
+// automatique par texte du PDF (qui peut se tromper selon le format du BL).
+function populateBlChantierSelect(){
+  var sel = document.getElementById('bl-chantier-select');
+  if(!sel || !blData) return;
+  var sorted = chantiers.slice().sort(function(a,b){return (a.num||'').localeCompare(b.num||'');});
+  var guess = null;
+  if(blData.chantier){
+    var chNom = normChantierName(blData.chantier);
+    guess = chantiers.find(function(c){
+      var cNom = normChantierName(c.client);
+      return cNom === chNom || cNom.includes(chNom) || chNom.includes(cNom);
+    });
+  }
+  sel.innerHTML = '<option value="">— Sélectionner —</option>' + sorted.map(function(c){
+    return '<option value="'+h(c.recId)+'"'+(guess&&guess.recId===c.recId?' selected':'')+'>'+h(c.num)+' — '+h(c.client)+'</option>';
+  }).join('');
+  blData.chantierRecId = guess ? guess.recId : '';
+  saveBLLocal();
+}
+function onBlChantierSelect(recId){
+  if(!blData) return;
+  blData.chantierRecId = recId || '';
+  saveBLLocal();
+}
+
 async function validerReceptionBL(){
   // Restaurer depuis localStorage si blData est null
   if(!blData) loadBLLocal();
@@ -1785,13 +1829,20 @@ async function validerReceptionBL(){
   if(errors > 0) msg += ' — ❌ '+errors+' erreur'+(errors>1?'s':'')+' Airtable';
 
   // Mettre à jour le chantier avec les articles reçus
-  if(blData.chantier){
-    var chNom = blData.chantier.toLowerCase().trim();
-    var ch = chantiers.find(function(c){
-      var cNom = c.client.toLowerCase().trim();
-      return cNom === chNom || cNom.includes(chNom) || chNom.includes(cNom);
-    });
-    console.log('Chantier trouvé:', ch ? ch.num+' '+ch.client : 'AUCUN', '| recherche:', chNom);
+  // Priorité à la sélection manuelle (fiable) ; à défaut, rapprochement par texte
+  // du PDF (peut se tromper si le format du BL change).
+  {
+    var ch = null;
+    if(blData.chantierRecId){
+      ch = chantiers.find(function(c){return c.recId===blData.chantierRecId;});
+    } else if(blData.chantier){
+      var chNom = normChantierName(blData.chantier);
+      ch = chantiers.find(function(c){
+        var cNom = normChantierName(c.client);
+        return cNom === chNom || cNom.includes(chNom) || chNom.includes(cNom);
+      });
+    }
+    console.log('Chantier trouvé:', ch ? ch.num+' '+ch.client : 'AUCUN', '| sélection manuelle:', !!blData.chantierRecId, '| texte PDF:', blData.chantier);
     if(ch){
       // Ajouter chaque article reçu comme ligne dans le chantier
       for(var j=0; j<blData.articles.length; j++){
@@ -1811,12 +1862,16 @@ async function validerReceptionBL(){
           }catch(e){ console.error('Ligne chantier error:', art.ref, e); }
         }
       }
-      // Notes reste à livrer
+      // Notes reste à livrer — complète les notes existantes (ex: remise Technal)
+      // au lieu de les écraser. Remplace seulement une éventuelle ancienne ligne
+      // "Reste à livrer" (pour ne pas s'accumuler si ce même BL est traité 2 fois).
       if(blData.reste_a_livrer.length > 0){
         var ralNote = 'Reste à livrer (BL '+blData.num_bl+') : '+blData.reste_a_livrer.map(function(r){
           return r.ref+' x'+r.qty+' ('+r.date_livr+')';
         }).join(', ');
-        try{ await updateChantierRecord(ch.recId, ch.statut, ralNote); ch.notes = ralNote; }catch(e){}
+        var autresNotes = (ch.notes||'').split('\n').filter(function(l){return l && l.indexOf('Reste à livrer (BL')!==0;});
+        var notesMaj = autresNotes.concat([ralNote]).join('\n');
+        try{ await updateChantierRecord(ch.recId, ch.statut, notesMaj); ch.notes = notesMaj; }catch(e){}
       }
     }
   }
@@ -1859,7 +1914,8 @@ function startBLReception(){
   document.getElementById('bl-num-display').textContent = 'BL n° ' + blData.num_bl;
   document.getElementById('bl-chantier-display').textContent = blData.chantier || '—';
   document.getElementById('bl-date-display').textContent = blData.date ? 'Date : '+blData.date : '';
-  renderBLArticles();
+  populateBlChantierSelect();
+renderBLArticles();
   updateBLProgress();
   var ralSection = document.getElementById('bl-ral-section');
   var ralList = document.getElementById('bl-ral-list');
@@ -2414,7 +2470,7 @@ function renderDetail(num){
   if(ch.notes && ch.notes.includes('Reste à livrer')){
     ralHtml = '<div style="background:var(--amber-light);border:1px solid var(--amber);border-radius:10px;padding:12px;margin-bottom:8px">'
       +'<div style="font-weight:700;color:var(--amber);font-size:13px;margin-bottom:6px">⏳ Reste à livrer</div>'
-      +'<div style="font-size:12px;color:var(--text)">'+h(ch.notes)+'</div>'
+      +'<div style="font-size:12px;color:var(--text);white-space:pre-line">'+h(ch.notes)+'</div>'
       +'</div>';
   }
   document.getElementById('detail-lines').insertAdjacentHTML('beforebegin', ralHtml);
@@ -3330,7 +3386,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-03';
+const APP_BUILD = '2026-10-22-05';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
