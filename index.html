@@ -440,6 +440,7 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
     Retour aux chantiers
   </button>
   <div class="chantier-detail-header" id="detail-header"></div>
+  <div id="detail-ral"></div>
   <div class="section-head"><h3>Références du chantier</h3><span id="detail-count"></span></div>
   <div id="detail-lines" style="display:flex;flex-direction:column;gap:7px"></div>
   <button class="btn-add-ref" onclick="openAddRef()">
@@ -1937,6 +1938,7 @@ async function validerReceptionBL(){
       if(blData.reste_a_livrer.length > 0){
         for(var k=0; k<blData.reste_a_livrer.length; k++){
           var r = blData.reste_a_livrer[k];
+          if(resteALivrer.some(function(ex){return ex.ch_num===ch.num&&ex.ref===r.ref;})) continue;
           var prodR = products.find(function(p){return p.ref===r.ref;});
           var row = {
             ch_num: ch.num, ch_client: ch.client, ref: r.ref,
@@ -2577,7 +2579,7 @@ function renderDetail(num){
       }).join('')
       +'</div>';
   }
-  document.getElementById('detail-lines').insertAdjacentHTML('beforebegin', ralHtml);
+  document.getElementById('detail-ral').innerHTML = ralHtml;
 
   if(!total){
     document.getElementById('detail-lines').innerHTML='<div class="empty" style="padding:20px">Aucune référence — ajoutez-en via le bouton ci-dessous</div>';
@@ -2754,6 +2756,10 @@ async function saveAddRal(){
   const date_livr=document.getElementById('addral-date').value.trim();
   const bl_num=document.getElementById('addral-bl').value.trim();
   const ch=chantiers.find(c=>c.num===currentChantier);if(!ch)return;
+  if(resteALivrer.some(function(r){return r.ch_num===ch.num&&r.ref===ref;})){
+    toast('⚠️ '+ref+' est déjà en reste à livrer pour ce chantier');
+    return;
+  }
   const p=products.find(x=>x.ref===ref);
   closeOverlay('overlay-addral');
   const row={ch_num:ch.num, ch_client:ch.client, ref:ref, designation:p?p.des:'', qty:String(qty), unite:p?(p.uni||''):'', date_livr:date_livr, bl_num:bl_num};
@@ -3541,7 +3547,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-16';
+const APP_BUILD = '2026-10-22-17';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
