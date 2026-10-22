@@ -567,11 +567,11 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
   <div class="sheet-row"><span>Unité</span><span id="sh-uni"></span></div>
   <div class="seuil-block">
     <label>📍 Emplacement (ex: H3)</label>
-    <input type="text" id="sh-emplacement" placeholder="Non renseigné">
+    <input type="text" id="sh-emplacement" placeholder="">
   </div>
   <div class="seuil-block">
-    <label>🎨 Couleurs disponibles (si plusieurs, séparées par virgule)</label>
-    <input type="text" id="sh-couleurs-dispo" placeholder="ex: BRUT, BLANC, NOIR">
+    <label>🎨 Ajouter une couleur (laisser vide si rien à ajouter)</label>
+    <input type="text" id="sh-couleurs-dispo" placeholder="ex: 7016.330">
   </div>
   <div class="qty-block" id="sh-qty-block">
     <label>Quantité en stock</label>
@@ -1291,10 +1291,10 @@ function openSheet(ref){
   document.getElementById('sh-uni').textContent=p.uni||'—';
   document.getElementById('sh-seuil').value=pendingSeuil;
   document.getElementById('sh-emplacement').value=p.emp||'';
-  // Pré-remplit avec la couleur simple existante (éclatée sur / , ;) si pas encore en mode multi,
-  // pour pouvoir juste compléter au lieu de devoir tout retaper depuis zéro.
-  var couleursPrefill = p.couleursDispo || (p.col ? p.col.split(/[\/,;]/).map(function(s){return s.trim();}).filter(Boolean) : []);
-  document.getElementById('sh-couleurs-dispo').value = couleursPrefill.join(', ');
+  // Champ toujours vide à l'ouverture : il sert à AJOUTER une couleur, pas à
+  // retaper toute la liste existante (voir saveSheet, qui fusionne avec
+  // l'existant au lieu de remplacer).
+  document.getElementById('sh-couleurs-dispo').value = '';
   var isMulti = !!p.couleursDispo;
   document.getElementById('sh-qty-block').style.display = isMulti ? 'none' : '';
   document.getElementById('sh-multi-block').style.display = isMulti ? 'flex' : 'none';
@@ -1313,10 +1313,16 @@ function sheetQty(d){pendingQty=Math.max(0,pendingQty+d);document.getElementById
 async function saveSheet(){
   if(!currentRef)return;
   var emplacement=(document.getElementById('sh-emplacement').value||'').trim();
-  var couleursRaw=(document.getElementById('sh-couleurs-dispo').value||'').trim();
-  var couleursArr=couleursRaw?[...new Set(couleursRaw.split(',').map(function(s){return s.trim().toUpperCase();}).filter(Boolean))]:[];
-  var couleursDispo=couleursArr.length>=2?couleursArr:null;
   var p=products.find(function(x){return x.ref===currentRef;});
+  // Le champ ne sert qu'à AJOUTER une ou plusieurs couleurs — on le fusionne
+  // avec les couleurs déjà connues (couleursDispo, ou la couleur simple
+  // existante) plutôt que de les remplacer, pour que taper juste la
+  // nouvelle couleur suffise.
+  var couleursTyped=(document.getElementById('sh-couleurs-dispo').value||'').trim();
+  var couleursAjout=couleursTyped?couleursTyped.split(',').map(function(s){return s.trim().toUpperCase();}).filter(Boolean):[];
+  var couleursExistantes = (p&&p.couleursDispo) ? p.couleursDispo.slice() : (p&&p.col ? p.col.split(/[\/,;]/).map(function(s){return s.trim().toUpperCase();}).filter(Boolean) : []);
+  var couleursArr=[...new Set(couleursExistantes.concat(couleursAjout))];
+  var couleursDispo=couleursArr.length>=2?couleursArr:null;
   var wasMulti = !!(p&&p.couleursDispo);
   if(p){p.emp=emplacement;p.couleursDispo=couleursDispo;}
   var isMulti = !!couleursDispo;
@@ -3547,7 +3553,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-17';
+const APP_BUILD = '2026-10-22-18';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
