@@ -3553,7 +3553,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-22-18';
+const APP_BUILD = '2026-10-26-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
@@ -3575,8 +3575,17 @@ function showUpdateBanner(){
   b.innerHTML='<span>🔄 Nouvelle version disponible</span><button style="background:#fff;color:var(--blue);border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer" onclick="location.reload()">Mettre à jour</button>';
   document.body.appendChild(b);
 }
-// Quand on reprend l'app en main (sortie de veille, tablette rallumée) : mise à jour silencieuse.
-document.addEventListener('visibilitychange', function(){ if(!document.hidden) checkForUpdate(true); });
+// Quand on reprend l'app en main (sortie de veille, tablette rallumée) : mise à jour silencieuse,
+// SAUF si une saisie semble en cours (champ actif, overlay ouvert) — sinon un rechargement
+// silencieux pouvait effacer une quantité tapée juste avant que l'écran ne se verrouille,
+// sans aucune trace côté serveur puisque rien n'avait encore été envoyé.
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden) return;
+  var activeTag = document.activeElement && document.activeElement.tagName;
+  var isEditing = activeTag==='INPUT' || activeTag==='TEXTAREA';
+  var overlayOpen = !!document.querySelector('.overlay.open');
+  checkForUpdate(!isEditing && !overlayOpen);
+});
 // Pendant une utilisation active : simple bannière, pour ne pas couper une saisie en cours.
 setInterval(function(){ checkForUpdate(false); }, 5*60*1000);
 
