@@ -330,6 +330,10 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
     <select id="sel-fam" onchange="doFilter()"><option value="">Toutes familles</option></select>
     <select id="sel-col" onchange="doFilter()"><option value="">Tous coloris</option></select>
   </div>
+  <button class="btn-new-chantier" style="margin-top:4px" onclick="openNewArticle()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Nouvelle référence
+  </button>
   <div class="count-line" id="count-line"></div>
   <div class="product-list" id="plist"></div>
 </div>
@@ -675,6 +679,32 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
     </button>
   </div>
   <button class="btn-cancel" style="margin-top:10px" onclick="closeOverlay('overlay-addral')">Fermer</button>
+</div>
+</div>
+
+<!-- OVERLAY NOUVELLE RÉFÉRENCE -->
+<div class="overlay" id="overlay-newarticle" onclick="closeOverlay('overlay-newarticle',event)">
+<div class="sheet">
+  <h2>Nouvelle référence</h2>
+  <div class="modal-form">
+    <div class="field"><label>Référence</label><input id="na-ref" placeholder="Ex : TXZ12345" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+    <div class="field"><label>Désignation</label><input id="na-des" placeholder="Ex : Joint central 6mm" autocomplete="off"></div>
+    <div class="field"><label>Famille (optionnel)</label><input id="na-fam" placeholder="Ex : Fenêtre SOLEAL 55" autocomplete="off"></div>
+    <div class="field"><label>Couleur (optionnel)</label><input id="na-col" placeholder="Ex : BLANC" autocomplete="off"></div>
+    <div class="field"><label>Unité</label>
+      <select id="na-uni">
+        <option value="PC">PC (pièces)</option>
+        <option value="M">M (mètres)</option>
+      </select>
+    </div>
+    <div class="field"><label>Quantité initiale</label><input id="na-qty" type="number" inputmode="decimal" step="any" min="0" value="0"></div>
+  </div>
+  <div id="na-err" style="display:none;color:var(--red);font-size:13px;margin-bottom:8px"></div>
+  <button class="btn-save" onclick="saveNewArticle()">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+    Créer la référence
+  </button>
+  <button class="btn-cancel" onclick="closeOverlay('overlay-newarticle')">Annuler</button>
 </div>
 </div>
 
@@ -2777,6 +2807,49 @@ async function saveAddRal(){
   }catch(e){ toast('Erreur réseau'); }
 }
 
+// -- NOUVELLE RÉFÉRENCE (hors catalogue) -----------------------------------------
+function openNewArticle(){
+  document.getElementById('na-ref').value='';
+  document.getElementById('na-des').value='';
+  document.getElementById('na-fam').value='';
+  document.getElementById('na-col').value='';
+  document.getElementById('na-uni').value='PC';
+  document.getElementById('na-qty').value=0;
+  document.getElementById('na-err').style.display='none';
+  document.getElementById('overlay-newarticle').classList.add('open');
+  setTimeout(function(){document.getElementById('na-ref').focus();},200);
+}
+async function saveNewArticle(){
+  var ref=(document.getElementById('na-ref').value||'').trim().toUpperCase();
+  var des=(document.getElementById('na-des').value||'').trim();
+  var fam=(document.getElementById('na-fam').value||'').trim();
+  var col=(document.getElementById('na-col').value||'').trim();
+  var uni=document.getElementById('na-uni').value;
+  var qty=parseFloat((document.getElementById('na-qty').value||'0').toString().replace(',','.'))||0;
+  var errEl=document.getElementById('na-err');
+  errEl.style.display='none';
+  if(!ref){ errEl.textContent='La référence est obligatoire'; errEl.style.display='block'; return; }
+  if(!des){ errEl.textContent='La désignation est obligatoire'; errEl.style.display='block'; return; }
+  if(products.some(function(p){return p.ref===ref;})){
+    errEl.textContent='Cette référence existe déjà dans le catalogue';
+    errEl.style.display='block';
+    return;
+  }
+  closeOverlay('overlay-newarticle');
+  toast('⏳ Création en cours…');
+  try{
+    await sbFetch('articles', {
+      method:'POST',
+      headers:{'Prefer':'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify({ref:ref, designation:des, famille:fam||null, couleur:col||null, unite:uni})
+    });
+    products.push({id:ref, ref:ref, des:des, fam:fam, col:col, uni:uni, cat:'', emp:''});
+    await upsertStock(ref, qty, 0);
+    saveLocal();doFilter();updateBadge();
+    toast('✅ '+ref+' créée et ajoutée au stock');
+  }catch(e){ toast('❌ Erreur : '+(e&&e.message?e.message.substring(0,60):'réseau')); }
+}
+
 // -- EXPORT --------------------------------------------------------------------
 function updateStats(){
   document.getElementById('s-total').textContent=products.length;
@@ -3553,7 +3626,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-26-01';
+const APP_BUILD = '2026-10-27-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
