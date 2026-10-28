@@ -1839,6 +1839,24 @@ function chantierNameMatches(a, b){
   return a.split(' ').filter(function(w){return w.length>=4;}).some(function(w){return wordsB.indexOf(w)!==-1;});
 }
 
+// Fait correspondre une des couleurs connues d'une référence (prod.couleursDispo) à un
+// texte source (un champ couleur dédié, ou une désignation libre où le code couleur est
+// noyé dans le texte, comme sur les bons de livraison). Essaie d'abord une égalité stricte,
+// puis une présence du code couleur dans le texte (bornée pour éviter un faux positif du
+// style "7016" qui matcherait dans "70165").
+function matchCouleurFromText(couleursDispo, text){
+  if(!couleursDispo || !couleursDispo.length || !text) return null;
+  var norm = text.trim().toUpperCase();
+  var exact = couleursDispo.find(function(c){return c.toUpperCase()===norm;});
+  if(exact) return exact;
+  return couleursDispo.find(function(c){
+    var cu = c.toUpperCase().trim();
+    if(!cu) return false;
+    var esc = cu.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    return new RegExp('(^|[^A-Z0-9])'+esc+'([^A-Z0-9]|$)').test(norm);
+  }) || null;
+}
+
 // Sélecteur manuel du chantier à affecter — c'est la SEULE source utilisée pour
 // rattacher les données (lignes + reste à livrer), jamais le texte détecté dans le
 // PDF (affiché juste au-dessus à titre indicatif seulement, pas fiable d'un BL à
@@ -1874,6 +1892,7 @@ async function validerReceptionBL(){
 
   toast('⏳ Enregistrement en cours…');
   var countStock = 0, countAT = 0, errors = 0;
+  var couleurAAjuster = [];
 
   for(var i=0; i<blData.articles.length; i++){
     var a = blData.articles[i];
@@ -1923,15 +1942,32 @@ async function validerReceptionBL(){
 
     // Mettre à jour le stock uniquement si reçu
     if(a.qty_recue > 0){
-      var s = stockMap[a.ref]||{qty:0,seuil:0};
-      var nq = s.qty + a.qty_recue;
-      stockMap[a.ref] = Object.assign({},s,{qty:nq});
-      saveLocal();
-      try{
-        await upsertStock(a.ref, nq, s.seuil);
-        addHistory('reception-bl', a.ref, a.qty_recue, USERNAME);
-        countStock++;
-      }catch(e){ console.error('Stock error:', e); }
+      // Pour une référence multi-couleur, le code couleur n'est pas dans un champ à part
+      // sur un BL (contrairement à la fiche de fabrication) : il est noyé dans la
+      // désignation libre (ex: "Profilé dormant ... 7016.330"), donc on le cherche dedans.
+      var prodBL = products.find(function(x){return x.ref===a.ref;});
+      var matchedColorBL = prodBL && prodBL.couleursDispo ? matchCouleurFromText(prodBL.couleursDispo, a.des) : null;
+      if(prodBL && prodBL.couleursDispo && !matchedColorBL){
+        console.error('BL: couleur non reconnue pour '+a.ref+' dans "'+a.des+'" (couleurs dispo: '+prodBL.couleursDispo.join(', ')+')');
+        couleurAAjuster.push(a.ref);
+      } else {
+        var s = matchedColorBL ? ((stockColorMap[a.ref]||{})[matchedColorBL]||{qty:0,seuil:0}) : (stockMap[a.ref]||{qty:0,seuil:0});
+        var nq = s.qty + a.qty_recue;
+        try{
+          await upsertStock(a.ref, nq, s.seuil, matchedColorBL);
+          if(matchedColorBL){
+            if(!stockColorMap[a.ref]) stockColorMap[a.ref]={};
+            stockColorMap[a.ref][matchedColorBL] = Object.assign({},s,{qty:nq});
+            var totalBL=0; Object.keys(stockColorMap[a.ref]).forEach(function(c){totalBL+=stockColorMap[a.ref][c].qty||0;});
+            stockMap[a.ref]=Object.assign(stockMap[a.ref]||{},{qty:totalBL});
+          } else {
+            stockMap[a.ref] = Object.assign({},s,{qty:nq});
+          }
+          saveLocal();
+          addHistory('reception-bl', a.ref, a.qty_recue, USERNAME);
+          countStock++;
+        }catch(e){ console.error('Stock error:', e); }
+      }
     }
   }
 
@@ -1940,6 +1976,7 @@ async function validerReceptionBL(){
   var msg = '✅ '+countStock+' article'+(countStock>1?'s':'')+' en stock';
   if(manquants > 0) msg += ' — ⚠️ '+manquants+' manquant'+(manquants>1?'s':'');
   if(errors > 0) msg += ' — ❌ '+errors+' erreur'+(errors>1?'s':'')+' Airtable';
+  if(couleurAAjuster.length > 0) msg += ' — 🎨 à ajuster depuis l\'onglet Stock : '+couleurAAjuster.join(', ');
 
   // Mettre à jour le chantier avec les articles reçus
   // Priorité à la sélection manuelle (fiable) ; à défaut, rapprochement par texte
@@ -2469,7 +2506,7 @@ async function confirmFabricationSortie(){
     try{
       if(!it.inCatalog){ await createCatalogueEntry(it.ref, it.des, it.couleur, it.unite); }
       var prod = products.find(function(x){return x.ref===it.ref;});
-      var matchedColor = prod && prod.couleursDispo ? (prod.couleursDispo.find(function(c){return c.toUpperCase()===(it.couleur||'').trim().toUpperCase();})||null) : null;
+      var matchedColor = prod && prod.couleursDispo ? matchCouleurFromText(prod.couleursDispo, it.couleur) : null;
       if(prod && prod.couleursDispo && !matchedColor){
         console.error('Fiche fabrication: couleur "'+it.couleur+'" non reconnue pour '+it.ref+' (couleurs dispo: '+prod.couleursDispo.join(', ')+')');
         ko++; continue;
@@ -3329,7 +3366,7 @@ async function confirmScan(operation){
 
     // Résolution couleur pour les refs multi-couleur (ex: coloris lu sur le QR/code-barres)
     var prodSc = products.find(function(x){return x.ref===ref;});
-    var matchedColorSc = prodSc && prodSc.couleursDispo ? (prodSc.couleursDispo.find(function(c){return c.toUpperCase()===(art.coloris||'').trim().toUpperCase();})||null) : null;
+    var matchedColorSc = prodSc && prodSc.couleursDispo ? matchCouleurFromText(prodSc.couleursDispo, art.coloris) : null;
     if(prodSc && prodSc.couleursDispo && !matchedColorSc){
       console.error('Scan: couleur "'+art.coloris+'" non reconnue pour '+ref+' (couleurs dispo: '+prodSc.couleursDispo.join(', ')+')');
       errors++; continue;
@@ -3626,7 +3663,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-28-01';
+const APP_BUILD = '2026-10-28-02';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
