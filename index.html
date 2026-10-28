@@ -2610,7 +2610,7 @@ function renderDetail(num){
       +ralCh.map(function(r){
         return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);padding:4px 0">'
           +'<span style="flex:1">'+h(r.ref)+' x'+h(r.qty)+' '+h(r.unite)+' — '+h(r.designation)+' ('+h(r.date_livr||'date inconnue')+', BL '+h(r.bl_num)+')</span>'
-          +'<button class="btn-c plus" onclick="event.stopPropagation();resolveResteALivrer('+r.id+')" title="Marquer reçu">✓</button>'
+          +(isAtelier()?'':'<button class="btn-c plus" onclick="event.stopPropagation();resolveResteALivrer('+r.id+')" title="Marquer reçu">✓</button>')
           +'</div>';
       }).join('')
       +'</div>';
@@ -3626,7 +3626,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-10-27-01';
+const APP_BUILD = '2026-10-28-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
