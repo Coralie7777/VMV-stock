@@ -1164,11 +1164,10 @@ async function doLogin(){
     hideSpin();
   }
 }
-function doLogout(){REMEMBER=false;localStorage.removeItem(SK);location.reload();}
-function softLogout(){
-  // Déconnexion "douce" (fin de journée 18h) : n'efface que le mot de passe
-  // app, garde le prénom et la clé API Airtable enregistrés pour ne pas
-  // avoir à tout ressaisir à la prochaine connexion.
+// Déconnexion : n'efface que le mot de passe de l'app, garde le prénom et la
+// clé API Airtable enregistrés pour ne pas avoir à les ressaisir à la
+// prochaine connexion — seul le mot de passe partagé sera redemandé.
+function doLogout(){
   APP_PW='';
   try{
     var d=JSON.parse(localStorage.getItem(SK)||'{}');
@@ -1177,6 +1176,7 @@ function softLogout(){
   }catch(e){}
   location.reload();
 }
+var softLogout = doLogout;
 
 // -- INIT ---------------------------------------------------------------------
 async function init(){
@@ -3754,7 +3754,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-05-01';
+const APP_BUILD = '2026-11-09-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
