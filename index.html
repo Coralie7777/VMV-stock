@@ -61,7 +61,6 @@ nav button svg{display:block;margin:0 auto 2px;width:17px;height:17px}
 .field input:focus{border-color:var(--blue)}
 .field textarea{padding:11px 13px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;background:#fff;color:var(--text);outline:none;font-family:inherit;resize:vertical}
 .field textarea:focus{border-color:var(--blue)}
-#annonce-banner{align-items:flex-start;gap:10px;background:var(--blue);color:#fff;padding:10px 16px;font-size:13px;font-weight:600;line-height:1.4}
 .btn-primary{width:100%;padding:13px;border:none;border-radius:var(--radius);background:var(--blue);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
 .btn-primary:active{opacity:.85}
 .login-err{color:var(--red);font-size:13px;text-align:center;margin-top:8px;display:none}
@@ -274,7 +273,6 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       Sync
     </button>
-    <button class="sync-btn" id="annonce-btn" onclick="openAnnonce()" style="display:none">📢 Infos</button>
     <button class="sync-btn" id="logout-btn" onclick="doLogout()" style="display:none">Quitter</button>
   </div>
 </header>
@@ -309,8 +307,6 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
     Export
   </button>
 </nav>
-
-<div id="annonce-banner" style="display:none"></div>
 
 <!-- LOGIN -->
 <div class="view active" id="view-login">
@@ -436,8 +432,14 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 <div class="view" id="view-chantiers">
   <div class="chantier-hero">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-    <div><h3>Gestion chantiers</h3><p>Stock prévu, stock entré, avancement en temps réel. Les chantiers se créent via Airtable.</p></div>
+    <div><h3>Gestion chantiers</h3><p>Stock prévu, stock entré, avancement en temps réel.</p></div>
   </div>
+
+  <button class="btn-new-chantier" id="btn-new-chantier-brouillon" style="display:none" onclick="openNewChantierBrouillon()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Nouveau chantier (brouillon)
+  </button>
+  <div id="brouillons-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:4px"></div>
 
   <div class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" id="inp-search-chantier" placeholder="Nom, numéro ou responsable..." oninput="renderChantiers()" autocomplete="off"></div>
   <div id="chantiers-list" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -714,24 +716,6 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
 </div>
 </div>
 
-<!-- OVERLAY INFORMATIONS À DIFFUSER -->
-<div class="overlay" id="overlay-annonce" onclick="closeOverlay('overlay-annonce',event)">
-<div class="sheet">
-  <h2>📢 Informations à diffuser</h2>
-  <p style="font-size:13px;color:var(--muted);margin:-6px 0 12px">Rédigez ici quand vous voulez, ça ne sera visible par l'atelier qu'au moment où vous cliquez sur "Diffuser".</p>
-  <div class="modal-form">
-    <div class="field"><label>Message (brouillon, privé)</label><textarea id="an-brouillon" rows="5" placeholder="Ex : Pas de commande vendredi, le dépôt est fermé." oninput="saveAnnonceBrouillonDebounced()"></textarea></div>
-  </div>
-  <div id="an-statut" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
-  <button class="btn-save" onclick="diffuserAnnonce()">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
-    Diffuser maintenant à l'atelier
-  </button>
-  <button class="btn-cancel" style="background:var(--red-light);color:var(--red)" onclick="retirerAnnonce()">🗑 Retirer la diffusion en cours</button>
-  <button class="btn-cancel" onclick="closeOverlay('overlay-annonce')">Fermer</button>
-</div>
-</div>
-
 <input type="file" id="bl-chantier-input" accept=".html,.htm" style="display:none" onchange="importBLChantier(this)">
 <div id="scanner-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:300;flex-direction:column;align-items:center;justify-content:center">
   <p style="color:#fff;font-size:14px;margin-bottom:16px">Pointez la caméra vers le code-barres</p>
@@ -875,10 +859,9 @@ const FLD_L = {ref:'fldGPOdvO79xicXVe',des:'fldkrr8irDEi3yF1w',chNum:'fldcAju81P
 let API_KEY='',USERNAME='',APP_PW='';
 let products=[],stockMap={},stockColorMap={},filtered=[];
 let chantiers=[],lignes=[],resteALivrer=[];
-let annonceData={brouillon:'',diffuse:'',diffuse_at:null};
-let annonceSaveTimer=null;
 let currentRef=null,pendingQty=0,pendingSeuil=0;
 let currentChantier=null,editingChantierRecId=null,editingChantierType='pro';
+let chantierBrouillons=[];
 let commandesMap={};  // ch_id -> url
 let allUsers=[],USER_ROLE='Opérateur',USER_REC_ID=null;
 function isAtelier(){return USERNAME.toLowerCase().includes('atelier')||USER_ROLE.toLowerCase().includes('atelier');}
@@ -1031,6 +1014,12 @@ async function loadChantiers(){
   }catch(e){console.log('Chantiers err',e);}
 }
 
+async function loadChantierBrouillons(){
+  try{
+    chantierBrouillons = await sbFetch('chantier_brouillon?select=*&order=created_at.desc') || [];
+  }catch(e){ console.error('loadChantierBrouillons error:', e); chantierBrouillons=[]; }
+}
+
 async function loadLignes(){
   try{
     var rows = await sbFetch('lignes_chantier?select=id,ch_num,ch_client,ref,designation,prevue,sortie,unite&limit=1000');
@@ -1102,8 +1091,11 @@ async function upsertStock(ref,qty,seuil,couleur){
 }
 
 async function createChantierRecord(num,client,resp,statut,notes){
-  const fields={[FLD_C.num]:num,[FLD_C.client]:client,[FLD_C.resp]:resp,[FLD_C.statut]:statut,[FLD_C.notes]:notes,[FLD_C.date]:new Date().toISOString().split('T')[0]};
-  const data=await atFetch(AT_CH_BASE,AT_CH_TABLE,'',{method:'POST',body:JSON.stringify({fields})});
+  // FLD_C.resp ("Qui") est un champ collaborateur Airtable qui attend un objet
+  // {id|email}, pas une chaîne libre — on ne l'envoie pas à la création pour
+  // éviter un rejet de l'API ; resp reste visible côté brouillon uniquement.
+  const fields={[FLD_C.num]:num,[FLD_C.client]:client,[FLD_C.statut]:statut,[FLD_C.notes]:notes,[FLD_C.date]:new Date().toISOString().split('T')[0]};
+  const data=await atFetch(AT_CH_BASE,AT_CH_TABLE,'',{method:'POST',body:JSON.stringify({fields,typecast:true})});
   return data.id;
 }
 
@@ -1188,10 +1180,10 @@ async function init(){
   try{await loadAllStock();}catch(e){toast('Stock en mode hors-ligne');}
   setSpin('Chargement chantiers…');
   try{await loadChantiers();}catch(e){toast('Chantiers en mode hors-ligne');}
+  try{await loadChantierBrouillons();}catch(e){console.error('Brouillons hors-ligne');}
   try{await loadLignes();}catch(e){console.error('Lignes hors-ligne');}
   try{await loadCommandes();}catch(e){console.error('Commandes hors-ligne');}
   try{await loadResteALivrer();}catch(e){console.error('Reste à livrer hors-ligne');}
-  try{await loadAnnonce();}catch(e){console.error('Annonce hors-ligne');}
   saveLocal();hideSpin();
   const app=document.getElementById('app');
   app.style.display='flex';app.style.flexDirection='column';
@@ -1201,8 +1193,6 @@ async function init(){
   document.getElementById('user-name-lbl').textContent=USERNAME;
   document.getElementById('logout-btn').style.display='flex';
   applyDeviceTabs(); // ré-applique maintenant que USERNAME (et isAtelier()) est connu
-  document.getElementById('annonce-btn').style.display = isAtelier() ? 'none' : 'flex';
-  renderAnnonceBanner();
   const _n=new Date();document.getElementById('hdr-sub').textContent=USERNAME+' · sync '+_n.getHours().toString().padStart(2,'0')+':'+_n.getMinutes().toString().padStart(2,'0');
   initFilters();filtered=[...products];
   renderProducts();updateBadge();renderChantiers();
@@ -1216,9 +1206,9 @@ async function init(){
 async function syncAll(){
   const btn=document.getElementById('sync-btn');btn.classList.add('syncing');
   try{
-    await loadAllStock();await loadChantiers();await loadResteALivrer();await loadAnnonce();
+    await loadAllStock();await loadChantiers();await loadChantierBrouillons();await loadResteALivrer();
     saveLocal();toast('Synchronisé ✓');
-    renderProducts();updateBadge();renderChantiers();renderAnnonceBanner();
+    renderProducts();updateBadge();renderChantiers();
     if(currentChantier)renderDetail(currentChantier);
     if(document.getElementById('view-export').classList.contains('active'))updateStats();
   }catch(e){toast('Erreur réseau');}
@@ -2117,7 +2107,31 @@ renderBLArticles();
 }
 
 // -- ANCIEN MODULE BON (saisie manuelle conservée) ----------------------------
+function renderChantierBrouillons(){
+  var btn = document.getElementById('btn-new-chantier-brouillon');
+  if(btn) btn.style.display = isAtelier() ? 'none' : 'flex';
+  var c = document.getElementById('brouillons-list');
+  if(!c) return;
+  if(isAtelier() || !chantierBrouillons.length){ c.innerHTML=''; return; }
+  c.innerHTML = chantierBrouillons.map(function(b){
+    return `<div class="chantier-card" style="border:1.5px dashed var(--purple);background:var(--purple-light)">
+      <div class="ch-header">
+        <div><div class="ch-num">${h(b.num)}</div><div class="ch-client">${h(b.client)}</div>${b.resp?`<div class="ch-resp">${h(b.resp)}</div>`:''}</div>
+        <span class="status-pill" style="background:#fff;color:var(--purple)">🔒 Brouillon</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-sm-action primary" style="flex:1;justify-content:center" onclick="diffuserChantierBrouillon(${b.id})">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+          Diffuser
+        </button>
+        <button class="btn-del" onclick="supprimerChantierBrouillon(${b.id})" title="Supprimer le brouillon">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function renderChantiers(){
+  renderChantierBrouillons();
   const c=document.getElementById('chantiers-list');
   const searchEl=document.getElementById('inp-search-chantier');
   const q=searchEl?searchEl.value.toLowerCase().trim():'';
@@ -2172,68 +2186,6 @@ async function loadResteALivrer(){
     resteALivrer = await sbFetch('reste_a_livrer?select=*&order=date_livr.asc') || [];
     console.log('Reste à livrer chargé:', resteALivrer.length);
   }catch(e){ console.error('loadResteALivrer error:', e); resteALivrer=[]; }
-}
-
-// -- INFORMATIONS À DIFFUSER (annonce) -------------------------------------------
-async function loadAnnonce(){
-  try{
-    var rows = await sbFetch('annonce?select=*&id=eq.1');
-    if(rows && rows[0]) annonceData = rows[0];
-  }catch(e){ console.error('loadAnnonce error:', e); }
-}
-function renderAnnonceBanner(){
-  var el = document.getElementById('annonce-banner');
-  if(!el) return;
-  if(annonceData.diffuse){
-    el.style.display = 'flex';
-    var dt = annonceData.diffuse_at ? new Date(annonceData.diffuse_at) : null;
-    var dtStr = dt ? ' — '+dt.getDate().toString().padStart(2,'0')+'/'+(dt.getMonth()+1).toString().padStart(2,'0')+' '+dt.getHours().toString().padStart(2,'0')+':'+dt.getMinutes().toString().padStart(2,'0') : '';
-    el.innerHTML = '<span style="flex:1;white-space:pre-line">📢 '+h(annonceData.diffuse)+'</span><span style="font-size:11px;opacity:.75;white-space:nowrap">'+dtStr+'</span>';
-  } else {
-    el.style.display = 'none';
-    el.innerHTML = '';
-  }
-}
-function openAnnonce(){
-  document.getElementById('an-brouillon').value = annonceData.brouillon || '';
-  document.getElementById('an-statut').textContent = annonceData.diffuse
-    ? 'Actuellement diffusé à l\'atelier : « '+annonceData.diffuse+' »'
-    : 'Rien n\'est diffusé actuellement.';
-  document.getElementById('overlay-annonce').classList.add('open');
-  setTimeout(function(){document.getElementById('an-brouillon').focus();},200);
-}
-function saveAnnonceBrouillonDebounced(){
-  clearTimeout(annonceSaveTimer);
-  annonceSaveTimer = setTimeout(saveAnnonceBrouillon, 600);
-}
-async function saveAnnonceBrouillon(){
-  var txt = document.getElementById('an-brouillon').value;
-  annonceData.brouillon = txt;
-  try{
-    await sbFetch('annonce?id=eq.1', {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:JSON.stringify({brouillon:txt})});
-  }catch(e){ console.error('saveAnnonceBrouillon error:', e); }
-}
-async function diffuserAnnonce(){
-  var txt = (document.getElementById('an-brouillon').value||'').trim();
-  if(!txt){ toast('Rien à diffuser — écrivez un message d\'abord'); return; }
-  var now = new Date().toISOString();
-  try{
-    await sbFetch('annonce?id=eq.1', {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:JSON.stringify({diffuse:txt, diffuse_at:now, brouillon:''})});
-    annonceData = {brouillon:'', diffuse:txt, diffuse_at:now};
-    document.getElementById('an-brouillon').value = '';
-    renderAnnonceBanner();
-    closeOverlay('overlay-annonce');
-    toast('📢 Diffusé à l\'atelier');
-  }catch(e){ toast('Erreur réseau'); }
-}
-async function retirerAnnonce(){
-  try{
-    await sbFetch('annonce?id=eq.1', {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:JSON.stringify({diffuse:'', diffuse_at:null})});
-    annonceData.diffuse=''; annonceData.diffuse_at=null;
-    renderAnnonceBanner();
-    document.getElementById('an-statut').textContent = 'Rien n\'est diffusé actuellement.';
-    toast('Diffusion retirée');
-  }catch(e){ toast('Erreur réseau'); }
 }
 
 async function saveCommandeSupabase(chId, url){
@@ -2802,12 +2754,14 @@ async function sortirComplet(recId,ref,sortieActuelle,prevue){
 }
 
 // -- MODIFIER CHANTIER (création via Airtable uniquement) ----------------------
+let chantierModalMode = 'edit';
 function openNewChantier(editNum){
   if(!editNum){ toast('Les chantiers se créent directement dans Airtable'); return; }
 
   var ch = chantiers.find(function(c){ return c.num === editNum; });
   if(!ch){ toast('Chantier introuvable'); return; }
 
+  chantierModalMode = 'edit';
   editingChantierRecId = ch.recId;
   document.getElementById('chantier-modal-title').textContent = 'Modifier — '+ch.num+' '+ch.client;
   document.getElementById('ch-num').value = ch.num;
@@ -2824,7 +2778,43 @@ function openNewChantier(editNum){
   if(fNotes) fNotes.style.display = isAtelier() ? 'none' : '';
 }
 
+// Nouveau chantier en brouillon : reste uniquement dans l'app (pas dans
+// Airtable, donc invisible pour l'atelier et tout autre appareil) tant
+// qu'on ne clique pas sur "Diffuser".
+function openNewChantierBrouillon(){
+  chantierModalMode = 'brouillon';
+  editingChantierRecId = null;
+  document.getElementById('chantier-modal-title').textContent = 'Nouveau chantier (brouillon)';
+  document.getElementById('ch-num').value = '';
+  document.getElementById('ch-num').disabled = false;
+  document.getElementById('ch-client').value = '';
+  document.getElementById('ch-resp').value = '';
+  document.getElementById('ch-statut').value = 'En préparation';
+  document.getElementById('ch-notes').value = '';
+  document.getElementById('ch-save-label').textContent = 'Enregistrer le brouillon';
+  document.getElementById('overlay-chantier').classList.add('open');
+  var fNotes = document.getElementById('field-ch-notes');
+  if(fNotes) fNotes.style.display = '';
+  setTimeout(function(){document.getElementById('ch-num').focus();},200);
+}
+
 async function saveChantier(){
+  if(chantierModalMode === 'brouillon'){
+    const num = document.getElementById('ch-num').value.trim();
+    const client = document.getElementById('ch-client').value.trim();
+    if(!num || !client){ toast('Numéro et client obligatoires'); return; }
+    const resp = document.getElementById('ch-resp').value.trim();
+    const statut = document.getElementById('ch-statut').value;
+    const notes = document.getElementById('ch-notes').value.trim();
+    closeOverlay('overlay-chantier');
+    try{
+      const created = await sbFetch('chantier_brouillon', {method:'POST', headers:{'Prefer':'return=representation'}, body:JSON.stringify({num,client,resp,statut,notes})});
+      if(created && created[0]) chantierBrouillons.unshift(created[0]);
+      renderChantiers();
+      toast('📝 Brouillon enregistré — pas encore visible par l\'atelier');
+    }catch(e){ toast('Erreur réseau'); }
+    return;
+  }
   if(!editingChantierRecId){ toast('Aucun chantier à modifier'); return; }
   const statut = document.getElementById('ch-statut').value;
   const notes  = document.getElementById('ch-notes').value.trim();
@@ -2837,6 +2827,30 @@ async function saveChantier(){
     if(currentChantier) renderDetail(currentChantier);
     renderChantiers();
     toast('Chantier mis à jour ✓');
+  }catch(e){ toast('Erreur réseau'); }
+}
+
+async function diffuserChantierBrouillon(id){
+  var b = chantierBrouillons.find(function(x){ return x.id===id; });
+  if(!b) return;
+  toast('⏳ Diffusion en cours…');
+  try{
+    const recId = await createChantierRecord(b.num, b.client, b.resp, b.statut, b.notes);
+    chantiers.push({recId:recId, client:b.client, num:b.num, statut:b.statut, resp:b.resp, notes:b.notes, type:'pro'});
+    await sbFetch('chantier_brouillon?id=eq.'+b.id, {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+    chantierBrouillons = chantierBrouillons.filter(function(x){ return x.id!==b.id; });
+    saveLocal();
+    renderChantiers();
+    toast('📢 Chantier diffusé — visible par tous');
+  }catch(e){ toast('Erreur réseau — brouillon conservé'); }
+}
+
+async function supprimerChantierBrouillon(id){
+  try{
+    await sbFetch('chantier_brouillon?id=eq.'+id, {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+    chantierBrouillons = chantierBrouillons.filter(function(x){ return x.id!==id; });
+    renderChantiers();
+    toast('Brouillon supprimé');
   }catch(e){ toast('Erreur réseau'); }
 }
 
@@ -3754,7 +3768,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-09-01';
+const APP_BUILD = '2026-11-09-02';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
