@@ -2129,7 +2129,10 @@ function renderChantierBrouillons(){
           :`<button class="btn-sm-action" onclick="uploadCommandeBrouillon(${b.id})">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
               Ajouter commande PDF
-            </button>`}
+            </button>
+            <div ondragover="event.preventDefault();event.stopPropagation();this.style.borderColor='var(--blue)';this.style.background='var(--blue-light)'" ondragleave="this.style.borderColor='var(--border)';this.style.background='#fafafa'" ondrop="event.preventDefault();event.stopPropagation();this.style.borderColor='var(--border)';this.style.background='#fafafa';var f=event.dataTransfer.files[0];if(f&&f.type==='application/pdf'){saveCommandeBrouillon(${b.id},f);}else{toast('❌ PDF uniquement')}" style="border:2px dashed var(--border);border-radius:10px;padding:12px;text-align:center;font-size:12px;color:var(--muted);margin-top:6px;background:#fafafa;transition:all 0.2s">
+              📄 Glissez le PDF de la commande ici
+            </div>`}
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn-sm-action primary" style="flex:1;justify-content:center" onclick="diffuserChantierBrouillon(${b.id})">
@@ -3821,7 +3824,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-17-01';
+const APP_BUILD = '2026-11-17-02';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
