@@ -2119,6 +2119,18 @@ function renderChantierBrouillons(){
         <div><div class="ch-num">${h(b.num)}</div><div class="ch-client">${h(b.client)}</div>${b.resp?`<div class="ch-resp">${h(b.resp)}</div>`:''}</div>
         <span class="status-pill" style="background:#fff;color:var(--purple)">🔒 Brouillon</span>
       </div>
+      <div style="margin-top:8px">
+        ${b.pdf_url
+          ?`<button class="btn-sm-action" style="background:#fff0f0;color:#c0392b;border-color:#c0392b" onclick="window.open('${a(b.pdf_url)}','_blank')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Voir commande
+            </button>
+            <button class="btn-sm-action" style="color:var(--muted);font-size:11px" onclick="uploadCommandeBrouillon(${b.id})">📎 Remplacer</button>`
+          :`<button class="btn-sm-action" onclick="uploadCommandeBrouillon(${b.id})">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              Ajouter commande PDF
+            </button>`}
+      </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn-sm-action primary" style="flex:1;justify-content:center" onclick="diffuserChantierBrouillon(${b.id})">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
@@ -2326,6 +2338,42 @@ function uploadCommandePDF(chNum){
   inp.type = 'file'; inp.accept = 'application/pdf';
   inp.onchange = function(){ savePDFCommande(chNum, inp.files[0]); };
   inp.click();
+}
+
+function uploadCommandeBrouillon(id){
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'application/pdf';
+  inp.onchange = function(){ saveCommandeBrouillon(id, inp.files[0]); };
+  inp.click();
+}
+async function saveCommandeBrouillon(id, file){
+  if(!file) return;
+  if(file.size > 10*1024*1024){ toast('❌ PDF trop lourd (max 10 Mo)'); return; }
+  var fileName = 'commande_brouillon_'+id+'_'+Date.now()+'.pdf';
+  toast('⏳ Upload en cours…');
+  try{
+    var resp = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: {
+        'apikey': SB_KEY,
+        'x-app-password': APP_PW,
+        'x-proxy-mode': 'storage',
+        'x-storage-path': 'COMMANDES/'+fileName,
+        'x-storage-content-type': 'application/pdf'
+      },
+      body: file
+    });
+    if(resp.status===401){ onAppPasswordRejected(); throw new Error('401 mot de passe app incorrect'); }
+    if(!resp.ok){ var err=await resp.text(); throw new Error(err); }
+    var publicUrl = SB_URL+'/storage/v1/object/public/COMMANDES/'+fileName;
+    await sbFetch('chantier_brouillon?id=eq.'+id, {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:JSON.stringify({pdf_url:publicUrl})});
+    var b = chantierBrouillons.find(function(x){ return x.id===id; });
+    if(b) b.pdf_url = publicUrl;
+    renderChantiers();
+    toast('✅ Commande PDF enregistrée sur le brouillon');
+  }catch(err){
+    toast('❌ Erreur upload : '+err.message.substring(0,60));
+  }
 }
 
 // ===== FICHE DE FABRICATION → SORTIE DE STOCK =====
@@ -2837,6 +2885,11 @@ async function diffuserChantierBrouillon(id){
   try{
     const recId = await createChantierRecord(b.num, b.client, b.resp, b.statut, b.notes);
     chantiers.push({recId:recId, client:b.client, num:b.num, statut:b.statut, resp:b.resp, notes:b.notes, type:'pro'});
+    if(b.pdf_url){
+      var chId = b.num.replace(/ /g,'_');
+      commandesMap[chId] = b.pdf_url;
+      await saveCommandeSupabase(chId, b.pdf_url);
+    }
     await sbFetch('chantier_brouillon?id=eq.'+b.id, {method:'DELETE', headers:{'Prefer':'return=minimal'}});
     chantierBrouillons = chantierBrouillons.filter(function(x){ return x.id!==b.id; });
     saveLocal();
@@ -3768,7 +3821,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-09-02';
+const APP_BUILD = '2026-11-17-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
