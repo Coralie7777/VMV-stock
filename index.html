@@ -454,6 +454,7 @@ select{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radiu
   <div class="chantier-detail-header" id="detail-header"></div>
   <div id="detail-ral"></div>
   <div class="section-head"><h3>Références du chantier</h3><span id="detail-count"></span></div>
+  <div class="search-wrap" style="margin-bottom:8px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" id="inp-search-detail" placeholder="Chercher une référence ou désignation…" oninput="renderDetail(currentChantier)" autocomplete="off"></div>
   <div id="detail-lines" style="display:flex;flex-direction:column;gap:7px"></div>
   <button class="btn-add-ref" onclick="openAddRef()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -2753,7 +2754,16 @@ function renderDetail(num){
     return;
   }
 
-  document.getElementById('detail-lines').innerHTML=chLignes.map(l=>{
+  const searchEl=document.getElementById('inp-search-detail');
+  const q=searchEl?searchEl.value.toLowerCase().trim():'';
+  const chLignesAffichees=q?chLignes.filter(l=>(l.ref+' '+l.des).toLowerCase().includes(q)):chLignes;
+  document.getElementById('detail-count').textContent=q?chLignesAffichees.length+' / '+total+' référence'+(total>1?'s':''):total+' référence'+(total>1?'s':'');
+  if(!chLignesAffichees.length){
+    document.getElementById('detail-lines').innerHTML='<div class="empty" style="padding:20px">Aucune référence ne correspond à « '+h(q)+' »</div>';
+    return;
+  }
+
+  document.getElementById('detail-lines').innerHTML=chLignesAffichees.map(l=>{
     const stockActuel=(stockMap[l.ref]||{qty:0}).qty;
     const reste=Math.max(0,l.prevue-l.sortie);
     const complet=l.sortie>=l.prevue&&l.prevue>0;
@@ -3824,7 +3834,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-17-02';
+const APP_BUILD = '2026-11-18-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
