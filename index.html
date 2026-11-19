@@ -1095,7 +1095,11 @@ async function createChantierRecord(num,client,resp,statut,notes){
   // FLD_C.resp ("Qui") est un champ collaborateur Airtable qui attend un objet
   // {id|email}, pas une chaîne libre — on ne l'envoie pas à la création pour
   // éviter un rejet de l'API ; resp reste visible côté brouillon uniquement.
-  const fields={[FLD_C.num]:num,[FLD_C.client]:client,[FLD_C.statut]:statut,[FLD_C.notes]:notes,[FLD_C.date]:new Date().toISOString().split('T')[0]};
+  // FLD_C.date n'est pas envoyé non plus : ce chemin de création n'avait
+  // jamais été utilisé avant la fonctionnalité brouillon, et rien ne confirme
+  // que ce champ accepte une écriture (souvent un champ "Date de création"
+  // calculé automatiquement par Airtable, qui rejette toute écriture en 422).
+  const fields={[FLD_C.num]:num,[FLD_C.client]:client,[FLD_C.statut]:statut,[FLD_C.notes]:notes};
   const data=await atFetch(AT_CH_BASE,AT_CH_TABLE,'',{method:'POST',body:JSON.stringify({fields,typecast:true})});
   return data.id;
 }
@@ -2911,10 +2915,16 @@ async function diffuserChantierBrouillon(id){
   }catch(e){
     console.error('diffuserChantierBrouillon error:', e);
     var msg = e && e.message ? e.message : '';
-    if(msg.indexOf('403')===0) toast('❌ Accès Airtable refusé (403) — brouillon conservé');
-    else if(msg.indexOf('429')===0) toast('❌ Quota Airtable dépassé (429) — brouillon conservé, réessayez le mois prochain ou plus tard');
-    else if(msg.indexOf('422')===0) toast('❌ Champ refusé par Airtable (422) — brouillon conservé, voir console');
-    else toast('❌ Erreur réseau — brouillon conservé'+(msg?' ('+msg.substring(0,60)+')':''));
+    if(msg.indexOf('403')===0){
+      toast('❌ Accès Airtable refusé (403) — brouillon conservé');
+    } else if(msg.indexOf('429')===0){
+      toast('❌ Quota Airtable dépassé (429) — brouillon conservé, réessayez le mois prochain ou plus tard');
+    } else {
+      // Détail complet affiché (plutôt qu'un toast tronqué) pour pouvoir le
+      // transmettre tel quel — un 422 pointe en général le champ en cause.
+      toast('❌ Erreur — brouillon conservé');
+      alert('Détail de l\'erreur Airtable (à transmettre si besoin) :\n\n'+msg);
+    }
   }
 }
 
@@ -3841,7 +3851,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-19-01';
+const APP_BUILD = '2026-11-19-02';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
