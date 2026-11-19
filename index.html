@@ -2908,7 +2908,14 @@ async function diffuserChantierBrouillon(id){
     saveLocal();
     renderChantiers();
     toast('📢 Chantier diffusé — visible par tous');
-  }catch(e){ toast('Erreur réseau — brouillon conservé'); }
+  }catch(e){
+    console.error('diffuserChantierBrouillon error:', e);
+    var msg = e && e.message ? e.message : '';
+    if(msg.indexOf('403')===0) toast('❌ Accès Airtable refusé (403) — brouillon conservé');
+    else if(msg.indexOf('429')===0) toast('❌ Quota Airtable dépassé (429) — brouillon conservé, réessayez le mois prochain ou plus tard');
+    else if(msg.indexOf('422')===0) toast('❌ Champ refusé par Airtable (422) — brouillon conservé, voir console');
+    else toast('❌ Erreur réseau — brouillon conservé'+(msg?' ('+msg.substring(0,60)+')':''));
+  }
 }
 
 async function supprimerChantierBrouillon(id){
@@ -3834,7 +3841,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-18-01';
+const APP_BUILD = '2026-11-19-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
