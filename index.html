@@ -1092,14 +1092,17 @@ async function upsertStock(ref,qty,seuil,couleur){
 }
 
 async function createChantierRecord(num,client,resp,statut,notes){
-  // FLD_C.resp ("Qui") est un champ collaborateur Airtable qui attend un objet
-  // {id|email}, pas une chaîne libre — on ne l'envoie pas à la création pour
-  // éviter un rejet de l'API ; resp reste visible côté brouillon uniquement.
-  // FLD_C.date n'est pas envoyé non plus : ce chemin de création n'avait
-  // jamais été utilisé avant la fonctionnalité brouillon, et rien ne confirme
-  // que ce champ accepte une écriture (souvent un champ "Date de création"
-  // calculé automatiquement par Airtable, qui rejette toute écriture en 422).
-  const fields={[FLD_C.num]:num,[FLD_C.client]:client,[FLD_C.statut]:statut,[FLD_C.notes]:notes};
+  // FLD_C.num et FLD_C.client pointaient vers des IDs de champ invalides
+  // ("Unknown field name" à la création — jamais exercés avant la fonctionnalité
+  // brouillon). On utilise les noms de colonnes réels de la table Airtable
+  // ("Numéro chantier", "Nom chantier"), confirmés par Coco directement dans
+  // la base — l'API Airtable accepte les noms de champ aussi bien que les IDs.
+  // FLD_C.resp ("Qui") est un champ collaborateur qui attend un objet
+  // {id|email}, pas une chaîne libre — on ne l'envoie pas à la création ;
+  // resp reste visible côté brouillon uniquement.
+  // FLD_C.date n'est pas envoyé non plus : probablement un champ "Date de
+  // création" calculé automatiquement par Airtable, qui rejette l'écriture.
+  const fields={'Numéro chantier':num,'Nom chantier':client,[FLD_C.statut]:statut,[FLD_C.notes]:notes};
   const data=await atFetch(AT_CH_BASE,AT_CH_TABLE,'',{method:'POST',body:JSON.stringify({fields,typecast:true})});
   return data.id;
 }
@@ -3851,7 +3854,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-19-02';
+const APP_BUILD = '2026-11-25-01';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
