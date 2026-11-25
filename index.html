@@ -1108,13 +1108,15 @@ async function createChantierRecord(num,client,resp,statut,notes){
   // dur à 'En cours'). On ne l'envoie donc plus du tout, ici ni dans
   // updateChantierRecord ci-dessous, qui échouait pour la même raison à
   // chaque "Modifier" d'un chantier existant.
-  const fields={'Numéro chantier':num,'Nom chantier':client,[FLD_C.notes]:notes};
+  // FLD_C.notes pointait lui aussi vers un ID invalide — utilise le nom réel
+  // de la colonne ("REMISE TECHNAL", confirmé par Coco dans Airtable).
+  const fields={'Numéro chantier':num,'Nom chantier':client,'REMISE TECHNAL':notes};
   const data=await atFetch(AT_CH_BASE,AT_CH_TABLE,'',{method:'POST',body:JSON.stringify({fields,typecast:true})});
   return data.id;
 }
 
 async function updateChantierRecord(recId,statut,notes){
-  const fields={[FLD_C.notes]:notes};
+  const fields={'REMISE TECHNAL':notes};
   await atFetch(AT_CH_BASE,AT_CH_TABLE,'/'+recId,{method:'PATCH',body:JSON.stringify({fields})});
 }
 
@@ -3860,7 +3862,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-25-02';
+const APP_BUILD = '2026-11-25-03';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
