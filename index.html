@@ -1102,13 +1102,19 @@ async function createChantierRecord(num,client,resp,statut,notes){
   // resp reste visible côté brouillon uniquement.
   // FLD_C.date n'est pas envoyé non plus : probablement un champ "Date de
   // création" calculé automatiquement par Airtable, qui rejette l'écriture.
-  const fields={'Numéro chantier':num,'Nom chantier':client,[FLD_C.statut]:statut,[FLD_C.notes]:notes};
+  // FLD_C.statut pointe aussi vers un ID de champ invalide ("Unknown field
+  // name" confirmé) — cohérent avec le fait que loadChantiers() ne lit
+  // d'ailleurs jamais de statut réel pour un chantier pro (toujours codé en
+  // dur à 'En cours'). On ne l'envoie donc plus du tout, ici ni dans
+  // updateChantierRecord ci-dessous, qui échouait pour la même raison à
+  // chaque "Modifier" d'un chantier existant.
+  const fields={'Numéro chantier':num,'Nom chantier':client,[FLD_C.notes]:notes};
   const data=await atFetch(AT_CH_BASE,AT_CH_TABLE,'',{method:'POST',body:JSON.stringify({fields,typecast:true})});
   return data.id;
 }
 
 async function updateChantierRecord(recId,statut,notes){
-  const fields={[FLD_C.statut]:statut,[FLD_C.notes]:notes};
+  const fields={[FLD_C.notes]:notes};
   await atFetch(AT_CH_BASE,AT_CH_TABLE,'/'+recId,{method:'PATCH',body:JSON.stringify({fields})});
 }
 
@@ -3854,7 +3860,7 @@ applyDeviceTabs();
 
 // -- MISE À JOUR AUTO ----------------------------------------------------------
 // À incrémenter à chaque modification du fichier pour que la détection fonctionne.
-const APP_BUILD = '2026-11-25-01';
+const APP_BUILD = '2026-11-25-02';
 var _updateBannerShown = false;
 async function checkForUpdate(autoReloadIfIdle){
   try{
